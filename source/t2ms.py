@@ -16,7 +16,7 @@ lock = Lock()
 
 HOST = ""
 PORT = 9999
-LOGGING = True if os.getenv("TALK2ME_LOG") == "on" else False
+LOGGING = False if os.getenv("TALK2ME_LOG") == "off" else True
 
 
 def register(username: str, password: str) -> bool:
@@ -175,6 +175,10 @@ def handle_request(conn: socket) -> None:
             else:
                 break
 
+        if LOGGING:
+            t = str(datetime.now())[: t.index(".")]
+            print(f"[{t}]: {data}")
+
         data = json.loads(data)
 
         match data["operation"]:
@@ -242,7 +246,7 @@ def handle_request(conn: socket) -> None:
 
         if LOGGING:
             t = str(datetime.now())[: t.index(".")]
-            print(f"[{t}]: answer")
+            print(f"[{t}]: {answer}")
 
         conn.sendall(answer)
 

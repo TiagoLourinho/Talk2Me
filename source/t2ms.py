@@ -22,7 +22,6 @@ active_threads = set()
 
 # Database
 database = Database()
-active_sockets = dict()
 
 
 def register(username: str, password: str) -> tuple[str]:

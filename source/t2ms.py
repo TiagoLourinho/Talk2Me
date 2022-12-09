@@ -1,172 +1,159 @@
 import socket
-from threading import Thread, Lock
+from threading import Thread
 import json
 import os
 from datetime import datetime
 
-from adts import User, Message, Chat
+from adts import Database
 
-threads = list()
-
-users = dict()
-chats = dict()
-session_tokens = set()
-
-lock = Lock()
-
+# Hyperparameters
 HOST = ""
 PORT = 9999
 LOGGING = False if os.getenv("TALK2ME_LOG") == "off" else True
+MAX_THREADS = 5  # Number of threads
+SOCKET_TIMEOUT = 1  # seconds
+
+# Macros
+SUCCESS = "Success"
+FAILURE = "Failure"
+
+# Multithreading
+active_threads = set()
+
+# Database
+database = Database()
+active_sockets = dict()
 
 
-def register(username: str, password: str) -> bool:
+def register(username: str, password: str) -> tuple[str]:
 
-    with lock:
-        if username not in users:
-            users[username] = User(username, password)
-            return True
-        else:
-            return False
+    # Check if user already exists
+    if database.exists_user(username):
+        return FAILURE, "Username already in use"
 
+    database.create_user(username, password)
 
-def login(username: str, password: str) -> str | bool:
-
-    with lock:
-        # Check if user is registered
-        if username not in users:
-            return False
-
-        # Check if password is correct
-        if not users[username].is_password_correct(password):
-            return False
-
-        token = user_to_token(users[username])
-        session_tokens.add(token)
-
-        return token
+    return SUCCESS, "User registered successfully"
 
 
-def create_chat(username: str, password: str, chat_name: str, users: list[str]) -> bool:
-    token = login(username, password)
+def login(username: str, password: str) -> tuple[str]:
 
-    # Error in login
-    if not token:
-        return False
+    # Check if user exists
+    if not database.exists_user(username):
+        return FAILURE, "User isn't registered"
 
-    with lock:
+    # Check if password is correct
+    if not database.is_password_correct(username, password):
+        return FAILURE, "Password is incorrect"
 
-        # Chat already exists
-        if chat_name in chats:
-            return False
-
-        chat = Chat(chat_name)
-
-        chat.add_user(users[username])
-
-        for user in users:
-
-            # Check if users are registered
-            if user not in users:
-                return False
-            else:
-                chat.add_user(users[user])
-
-        chats[chat_name] = chat
-
-        session_tokens.remove(token)
-        return True
+    return database.open_user_session(username), "Login was successfully"
 
 
-def send_msg(user_token: str, chat_name: str, msg: str) -> bool:
-    with lock:
-
-        # Check if user has done login
-        if user_token not in session_tokens:
-            return False
-
-        # Chat doesn't exist
-        if chat_name not in chats:
-            return False
-
-        chats[chat_name].send_message(Message(token_to_user(user_token), msg))
-
-        return True
-
-
-def recv_msg(user_token: str, chat_name: str) -> list[dict[str:str]] | bool:
-    with lock:
-        # Check if user has done login
-        if user_token not in session_tokens:
-            return False
-
-        # Chat doesn't exist
-        if chat_name not in chats:
-            return False
-
-        messages = chats[chat_name].get_unseen_messages(token_to_user(user_to_token))
-
-        return [
-            {"sender": msg.get_sender(), "message": msg.get_message()}
-            for msg in messages
-        ]
-
-
-def leave_chat(username: str, password: str, chat_name: str) -> bool:
-    token = login(username, password)
+def create_chat(
+    username: str, password: str, chat_name: str, users: list[str]
+) -> tuple[str]:
+    token, message = login(username, password)
 
     # Error in login
-    if not token:
-        return False
+    if token == FAILURE:
+        return token, message
 
-    with lock:
-        # Chat doesn't exist
-        if chat_name not in chats:
-            return False
+    # Chat already exists
+    if database.exists_chat(chat_name):
+        return FAILURE, "A chat with the same name already exist"
 
-        # User was not in the cat
-        if users[username] not in chats[chat_name]:
-            return False
+    # Check if all the users are registered
+    for user in users:
+        if not database.exists_user(user):
+            return FAILURE, "{user} is not registered"
 
-        chats[chat_name].remove_user(users[username])
+    database.create_chat(username)
 
-        session_tokens.remove(token)
-        return True
+    database.add_user_to_chat(username, chat_name)
+    for user in users:
+        database.add_user_to_chat(user, chat_name)
 
+    database.close_user_session(token)
 
-def list_users() -> list[str]:
-    with lock:
-        return list(users.keys())
-
-
-def list_chats() -> list[str]:
-    with lock:
-        return list(chats.keys())
+    return SUCCESS, "Created the chat successfully"
 
 
-def stats() -> dict[str : int | float]:
-    with lock:
-        return {
-            "number_of_users": len(users),
-            "number_of_chats": len(chats),
-            "number_of_sent_messages": sum([len(chat) for chat in chats]),
-        }
+def send_msg(user_token: str, chat_name: str, msg: str) -> tuple[str]:
+
+    # Check if user has done login
+    if not database.is_user_logged_in(user_token):
+        return FAILURE, "User was not logged in"
+
+    # Check if chat exist
+    if not database.exists_chat(chat_name):
+        return FAILURE, "Chat doesn't exist"
+
+    # Check if user in in the chat
+    if not database.is_user_in_chat(user_token, chat_name, use_token_instead=True):
+        return FAILURE, "User is not in the chat"
+
+    database.send_message(user_token, chat_name, msg)
+
+    return SUCCESS, "Message sent"
 
 
-def user_to_token(user: User) -> str:
-    return user.get_username()
+def recv_msg(user_token: str, chat_name: str) -> list[dict[str:str]] | tuple[str]:
+
+    # Check if user has done login
+    if not database.is_user_logged_in(user_token):
+        return FAILURE, "User was not logged in"
+
+    # Check if chat exist
+    if not database.exists_chat(chat_name):
+        return FAILURE, "Chat doesn't exist"
+
+    # Check if user in in the chat
+    if not database.is_user_in_chat(user_token, chat_name, use_token_instead=True):
+        return FAILURE, "User is not in the chat"
+
+    return database.get_unseen_messages(user_token, chat_name), "Messages received"
 
 
-def token_to_user(token: str) -> User:
-    return users[token]
+def leave_chat(username: str, password: str, chat_name: str) -> tuple[str]:
+    token, message = login(username, password)
+
+    # Error in login
+    if token == FAILURE:
+        return token, message
+
+    # Check if chat exist
+    if not database.exists_chat(chat_name):
+        return FAILURE, "Chat doesn't exist"
+
+    # Check if user in in the chat
+    if not database.is_user_in_chat(username, chat_name):
+        return FAILURE, "User is not in the chat"
+
+    database.remove_user_from_chat(username, chat_name)
+
+    database.close_user_session(token)
+
+    return SUCCESS, "User removed successfully"
+
+
+def list_users() -> tuple[list[str], str]:
+    return database.list_users(), "List of users sent"
+
+
+def list_chats() -> tuple[list[str], str]:
+    return database.list_chats(), "List of chats sent"
+
+
+def stats() -> tuple[dict[str : int | float], str]:
+    return database.get_stats(), "Stats sent"
 
 
 def handle_request(conn: socket) -> None:
     data = ""
-    SUCCESS = "Success"
-    FAILURE = "Failure"
 
-    # Receive full message
     with conn:
+
+        # Receive full message
         while True:
             received = conn.recv(1024).decode("utf-8")
 
@@ -183,64 +170,73 @@ def handle_request(conn: socket) -> None:
 
         match data["operation"]:
             case "register":
-                answer = {
-                    "rpl": SUCCESS
-                    if register(data["username"], data["password"])
-                    else FAILURE
-                }
+                rpl, info = register(data["username"], data["password"])
+
+                answer = {"rpl": rpl, "info": info}
 
             case "createchat":
-                answer = {
-                    "rpl": SUCCESS
-                    if create_chat(
-                        data["username"],
-                        data["password"],
-                        data["chatname"],
-                        data["users"],
-                    )
-                    else FAILURE
-                }
+                rpl, info = create_chat(
+                    data["username"],
+                    data["password"],
+                    data["chatname"],
+                    data["users"],
+                )
+
+                answer = {"rpl": rpl, "info": info}
+
+            case "login":
+                token, info = login(data["username"], data["password"])
+
+                if token != FAILURE:
+                    answer = {"rpl": SUCCESS, "info": info, "token": token}
+                else:
+                    answer = {"rpl": FAILURE, "info": info}
 
             case "sendmsg":
-                answer = {
-                    "rpl": SUCCESS
-                    if send_msg(data["token"], data["chatname"], data["message"])
-                    else FAILURE
-                }
+                rpl, info = send_msg(data["token"], data["chatname"], data["message"])
+
+                answer = {"rpl": rpl, "info": info}
 
             case "recvmsg":
-                messages = recv_msg(data["token"], data["chatname"])
-                answer = {"rpl": SUCCESS if messages else FAILURE}
-                if messages:
-                    answer["messages"] = messages
+                messages, info = recv_msg(data["token"], data["chatname"])
+
+                if messages != FAILURE:
+                    answer = {"rpl": SUCCESS, "info": info, "messages": messages}
+                else:
+                    answer = {"rpl": FAILURE, "info": info}
 
             case "leavechat":
-                answer = {
-                    "rpl": SUCCESS
-                    if leave_chat(data["username"], data["password"], data["chatname"])
-                    else FAILURE
-                }
+                rpl, info = leave_chat(
+                    data["username"], data["password"], data["chatname"]
+                )
+                answer = {"rpl": rpl, "info": info}
 
             case "listusers":
-                users = list_users()
-                answer = {"rpl": SUCCESS if users else FAILURE}
-                if users:
-                    answer["users"] = users
+                users, info = list_users()
+
+                if users != FAILURE:
+                    answer = {"rpl": SUCCESS, "info": info, "users": users}
+                else:
+                    answer = {"rpl": FAILURE, "info": info}
 
             case "listchats":
-                chats = list_chats()
-                answer = {"rpl": SUCCESS if chats else FAILURE}
-                if chats:
-                    answer["chats"] = chats
+                chats, info = list_chats()
+
+                if chats != FAILURE:
+                    answer = {"rpl": SUCCESS, "info": info, "chats": chats}
+                else:
+                    answer = {"rpl": FAILURE, "info": info}
 
             case "stats":
-                s = stats()
-                answer = {"rpl": SUCCESS if s else FAILURE}
-                if s:
-                    answer["stats"] = s
+                s, info = stats()
+
+                if s != FAILURE:
+                    answer = {"rpl": SUCCESS, "info": info, "stats": s}
+                else:
+                    answer = {"rpl": FAILURE, "info": info}
 
             case default:
-                answer = {"rpl": FAILURE}
+                answer = {"rpl": FAILURE, "info": "Invalid request"}
 
         answer = json.dumps(answer)
 
@@ -251,28 +247,32 @@ def handle_request(conn: socket) -> None:
         conn.sendall(answer)
 
 
-def clean_threads() -> None:
-    for t in threads:
-        if not t.is_alive():
-            t.join()
-
-
 def main() -> None:
+
+    socket.setdefaulttimeout(SOCKET_TIMEOUT)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((HOST, PORT))
-        s.listen(5)
+        s.listen(MAX_THREADS)
 
         while True:
-            conn, _ = s.accept()
+            try:
+                conn, _ = s.accept()
+            except TimeoutError:
 
-            # Handle clien request
-            threads.append(Thread(target=handle_request, args=(conn,)))
-            threads[-1].start()
+                # Clean up dead threads
+                if len(active_threads) > MAX_THREADS:
+                    for t in active_threads.copy():
+                        if not t.is_alive():
+                            t.join()
+                            active_threads.remove(t)
 
-            # Clean up threads
-            threads.append(Thread(target=clean_threads))
-            threads[-1].start()
+                continue
+
+            # Handle client request
+            t = Thread(target=handle_request, args=(conn,))
+            active_threads.add(t)
+            t.start()
 
 
 if __name__ == "__main__":

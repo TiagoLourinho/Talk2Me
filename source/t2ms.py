@@ -149,6 +149,7 @@ def stats() -> tuple[dict[str : int | float], str]:
 
 def handle_request(conn: socket) -> None:
     data = ""
+    enter_chat_mode = False
 
     with conn:
 
@@ -188,19 +189,7 @@ def handle_request(conn: socket) -> None:
 
                 if token != FAILURE:
                     answer = {"rpl": SUCCESS, "info": info, "token": token}
-                else:
-                    answer = {"rpl": FAILURE, "info": info}
-
-            case "sendmsg":
-                rpl, info = send_msg(data["token"], data["chatname"], data["message"])
-
-                answer = {"rpl": rpl, "info": info}
-
-            case "recvmsg":
-                messages, info = recv_msg(data["token"], data["chatname"])
-
-                if messages != FAILURE:
-                    answer = {"rpl": SUCCESS, "info": info, "messages": messages}
+                    enter_chat_mode = True
                 else:
                     answer = {"rpl": FAILURE, "info": info}
 
@@ -243,7 +232,61 @@ def handle_request(conn: socket) -> None:
             t = str(datetime.now())[: t.index(".")]
             print(f"[{t}]: {answer}")
 
-        conn.sendall(answer)
+        conn.sendall(bytes(answer, "utf-8"))
+
+        if enter_chat_mode:
+            while True:
+
+                # Check if socket is still open
+                try:
+                    conn.send(bytes("", "utf-8"))
+                except OSError:
+                    break
+
+                data = ""
+
+                # Receive full message
+                while True:
+                    received = conn.recv(1024).decode("utf-8")
+
+                    if received:
+                        data += received
+                    else:
+                        break
+
+                if LOGGING:
+                    t = str(datetime.now())[: t.index(".")]
+                    print(f"[{t}]: {data}")
+
+                data = json.loads(data)
+
+                match data["operation"]:
+                    case "sendmsg":
+                        rpl, info = send_msg(
+                            data["token"], data["chatname"], data["message"]
+                        )
+
+                        answer = {"rpl": rpl, "info": info}
+
+                    case "recvmsg":
+                        messages, info = recv_msg(data["token"], data["chatname"])
+
+                        if messages != FAILURE:
+                            answer = {
+                                "rpl": SUCCESS,
+                                "info": info,
+                                "messages": messages,
+                            }
+                        else:
+                            answer = {"rpl": FAILURE, "info": info}
+
+                answer = json.dumps(answer)
+
+                if LOGGING:
+                    t = str(datetime.now())[: t.index(".")]
+                    print(f"[{t}]: {answer}")
+
+                conn.sendall(bytes(answer, "utf-8"))
 
 
 def main() -> None:

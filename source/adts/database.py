@@ -24,7 +24,7 @@ class Database:
 
     def is_password_correct(self, username: str, password: str) -> bool:
         with self.__lock:
-            return self.__users[username].is_password_corret(
+            return self.__users[username].is_password_correct(
                 self.encode_password(password)
             )
 
@@ -76,7 +76,10 @@ class Database:
     ) -> list[dict[str:str]]:
         with self.__lock:
             return [
-                {"sender": msg.get_sender(), "message": msg.get_message()}
+                {
+                    "sender": msg.get_sender().get_username(),
+                    "msg": msg.get_message(),
+                }
                 for msg in self.__chats[chat_name].get_unseen_messages(
                     self.__tokens[user_token]
                 )
@@ -100,7 +103,9 @@ class Database:
             return {
                 "number_of_users": len(self.__users),
                 "number_of_chats": len(self.__chats),
-                "number_of_sent_messages": sum([len(chat) for chat in self.__chats]),
+                "number_of_sent_messages": sum(
+                    [len(chat) for chat in self.__chats.values()]
+                ),
             }
 
     def encode_password(self, password: str) -> str:

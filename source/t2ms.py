@@ -11,7 +11,7 @@ HOST = ""
 PORT = 9999
 LOGGING = False if os.getenv("TALK2ME_LOG") == "off" else True
 MAX_THREADS = 5  # Number of threads
-SOCKET_TIMEOUT = 1  # seconds
+SOCKET_TIMEOUT = 0.5  # seconds
 
 # Macros
 SUCCESS = "Success"
@@ -66,7 +66,7 @@ def create_chat(
         if not database.exists_user(user):
             return FAILURE, "{user} is not registered"
 
-    database.create_chat(username)
+    database.create_chat(chat_name)
 
     database.add_user_to_chat(username, chat_name)
     for user in users:
@@ -147,174 +147,158 @@ def stats() -> tuple[dict[str : int | float], str]:
     return database.get_stats(), "Stats sent"
 
 
-def handle_request(conn: socket) -> None:
+def receive_request(conn: socket.socket) -> str | bool:
+    # Receive message
     data = ""
-    enter_chat_mode = False
+    while True:
+        data += conn.recv(4096).decode("utf-8")
 
+        # Connection was closed
+        if not data:
+            return False
+
+        # Message is complete
+        if "}\r\n" in data:
+            data = data.strip()
+
+            if LOGGING:
+                now = str(datetime.now())
+                now = now[: now.index(".")]
+                print(f"[{now}]: {data}")
+
+            return data
+
+
+def send_answer(conn: socket.socket, message: str) -> None:
+    if LOGGING:
+        now = str(datetime.now())
+        now = now[: now.index(".")]
+        print(f"[{now}]: {message}")
+    conn.sendall(bytes(message + "\r\n", "utf-8"))
+
+
+def handle_request(conn: socket.socket) -> None:
     with conn:
 
-        # Receive full message
         while True:
-            received = conn.recv(1024).decode("utf-8")
 
-            if received:
-                data += received
-            else:
+            data = receive_request(conn)
+
+            # Connection closed
+            if not data:
                 break
 
-        if LOGGING:
-            t = str(datetime.now())[: t.index(".")]
-            print(f"[{t}]: {data}")
+            data = json.loads(data)
 
-        data = json.loads(data)
+            match data["operation"]:
+                case "register":
+                    rpl, info = register(data["username"], data["password"])
 
-        match data["operation"]:
-            case "register":
-                rpl, info = register(data["username"], data["password"])
+                    answer = {"rpl": rpl, "info": info}
 
-                answer = {"rpl": rpl, "info": info}
+                case "createchat":
+                    rpl, info = create_chat(
+                        data["username"],
+                        data["password"],
+                        data["chatname"],
+                        data["users"],
+                    )
 
-            case "createchat":
-                rpl, info = create_chat(
-                    data["username"],
-                    data["password"],
-                    data["chatname"],
-                    data["users"],
-                )
+                    answer = {"rpl": rpl, "info": info}
 
-                answer = {"rpl": rpl, "info": info}
+                case "login":
+                    token, info = login(data["username"], data["password"])
 
-            case "login":
-                token, info = login(data["username"], data["password"])
-
-                if token != FAILURE:
-                    answer = {"rpl": SUCCESS, "info": info, "token": token}
-                    enter_chat_mode = True
-                else:
-                    answer = {"rpl": FAILURE, "info": info}
-
-            case "leavechat":
-                rpl, info = leave_chat(
-                    data["username"], data["password"], data["chatname"]
-                )
-                answer = {"rpl": rpl, "info": info}
-
-            case "listusers":
-                users, info = list_users()
-
-                if users != FAILURE:
-                    answer = {"rpl": SUCCESS, "info": info, "users": users}
-                else:
-                    answer = {"rpl": FAILURE, "info": info}
-
-            case "listchats":
-                chats, info = list_chats()
-
-                if chats != FAILURE:
-                    answer = {"rpl": SUCCESS, "info": info, "chats": chats}
-                else:
-                    answer = {"rpl": FAILURE, "info": info}
-
-            case "stats":
-                s, info = stats()
-
-                if s != FAILURE:
-                    answer = {"rpl": SUCCESS, "info": info, "stats": s}
-                else:
-                    answer = {"rpl": FAILURE, "info": info}
-
-            case default:
-                answer = {"rpl": FAILURE, "info": "Invalid request"}
-
-        answer = json.dumps(answer)
-
-        if LOGGING:
-            t = str(datetime.now())[: t.index(".")]
-            print(f"[{t}]: {answer}")
-
-        conn.sendall(bytes(answer, "utf-8"))
-
-        if enter_chat_mode:
-            while True:
-
-                # Check if socket is still open
-                try:
-                    conn.send(bytes("", "utf-8"))
-                except OSError:
-                    break
-
-                data = ""
-
-                # Receive full message
-                while True:
-                    received = conn.recv(1024).decode("utf-8")
-
-                    if received:
-                        data += received
+                    if token != FAILURE:
+                        answer = {"rpl": SUCCESS, "info": info, "token": token}
+                        enter_chat_mode = True
                     else:
-                        break
+                        answer = {"rpl": FAILURE, "info": info}
 
-                if LOGGING:
-                    t = str(datetime.now())[: t.index(".")]
-                    print(f"[{t}]: {data}")
+                case "sendmsg":
+                    rpl, info = send_msg(data["token"], data["chatname"], data["msg"])
 
-                data = json.loads(data)
+                    answer = {"rpl": rpl, "info": info}
 
-                match data["operation"]:
-                    case "sendmsg":
-                        rpl, info = send_msg(
-                            data["token"], data["chatname"], data["message"]
-                        )
+                case "recvmsg":
+                    messages, info = recv_msg(data["token"], data["chatname"])
 
-                        answer = {"rpl": rpl, "info": info}
+                    if messages != FAILURE:
+                        answer = {
+                            "rpl": SUCCESS,
+                            "info": info,
+                            "messages": messages,
+                        }
+                    else:
+                        answer = {"rpl": FAILURE, "info": info}
 
-                    case "recvmsg":
-                        messages, info = recv_msg(data["token"], data["chatname"])
+                case "leavechat":
+                    rpl, info = leave_chat(
+                        data["username"], data["password"], data["chatname"]
+                    )
+                    answer = {"rpl": rpl, "info": info}
 
-                        if messages != FAILURE:
-                            answer = {
-                                "rpl": SUCCESS,
-                                "info": info,
-                                "messages": messages,
-                            }
-                        else:
-                            answer = {"rpl": FAILURE, "info": info}
+                case "listusers":
+                    users, info = list_users()
 
-                answer = json.dumps(answer)
+                    if users != FAILURE:
+                        answer = {"rpl": SUCCESS, "info": info, "users": users}
+                    else:
+                        answer = {"rpl": FAILURE, "info": info}
 
-                if LOGGING:
-                    t = str(datetime.now())[: t.index(".")]
-                    print(f"[{t}]: {answer}")
+                case "listchats":
+                    chats, info = list_chats()
 
-                conn.sendall(bytes(answer, "utf-8"))
+                    if chats != FAILURE:
+                        answer = {"rpl": SUCCESS, "info": info, "chats": chats}
+                    else:
+                        answer = {"rpl": FAILURE, "info": info}
+
+                case "stats":
+                    s, info = stats()
+
+                    if s != FAILURE:
+                        answer = {"rpl": SUCCESS, "info": info, "stats": s}
+                    else:
+                        answer = {"rpl": FAILURE, "info": info}
+
+                case default:
+                    answer = {"rpl": FAILURE, "info": "Invalid request"}
+
+            answer = json.dumps(answer)
+
+            send_answer(conn, answer)
+
+
+def clean_up_threads():
+    for t in active_threads.copy():
+        if not t.is_alive():
+            t.join()
+            active_threads.remove(t)
 
 
 def main() -> None:
 
-    socket.setdefaulttimeout(SOCKET_TIMEOUT)
-
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(SOCKET_TIMEOUT)
         s.bind((HOST, PORT))
-        s.listen(MAX_THREADS)
+        s.listen()
 
         while True:
             try:
                 conn, _ = s.accept()
             except TimeoutError:
 
-                # Clean up dead threads
-                if len(active_threads) > MAX_THREADS:
-                    for t in active_threads.copy():
-                        if not t.is_alive():
-                            t.join()
-                            active_threads.remove(t)
-
+                clean_up_threads()
                 continue
 
             # Handle client request
             t = Thread(target=handle_request, args=(conn,))
             active_threads.add(t)
             t.start()
+
+            if len(active_threads) > MAX_THREADS:
+                clean_up_threads()
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ class Message:
         self.__message = message
         self.__time = datetime.now()
 
-    def get_sender(self) -> str:
+    def get_sender(self) -> User:
         return self.__sender
 
     def get_message(self) -> str:

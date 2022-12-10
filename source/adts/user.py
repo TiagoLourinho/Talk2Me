@@ -14,3 +14,6 @@ class User:
 
     def __hash__(self) -> int:
         return hash(self.__username)
+
+    def __eq__(self, other: "User") -> bool:
+        return self.__username == other.__username

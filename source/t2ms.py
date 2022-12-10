@@ -262,7 +262,7 @@ def handle_request(conn: socket.socket) -> None:
                     else:
                         answer = {"rpl": FAILURE, "info": info}
 
-                case default:
+                case _:
                     answer = {"rpl": FAILURE, "info": "Invalid request"}
 
             answer = json.dumps(answer)

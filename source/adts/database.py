@@ -106,6 +106,7 @@ class Database:
                 "number_of_sent_messages": sum(
                     [len(chat) for chat in self.__chats.values()]
                 ),
+                "average_operation_latency": 0,
             }
 
     def encode_password(self, password: str) -> str:

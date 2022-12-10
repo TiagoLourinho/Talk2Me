@@ -9,7 +9,7 @@ from adts import Database
 # Hyperparameters
 HOST = ""
 PORT = 9999
-LOGGING = False if os.getenv("TALK2ME_LOG") == "off" else True
+LOGGING = True if os.getenv("TALK2ME_LOG") == "on" else False
 MAX_THREADS = 5  # Number of threads
 SOCKET_TIMEOUT = 0.5  # seconds
 
@@ -24,7 +24,11 @@ active_threads = set()
 database = Database()
 
 
+############################## Requests ##############################
+
+
 def register(username: str, password: str) -> tuple[str]:
+    """Regists an user in the database"""
 
     # Check if user already exists
     if database.exists_user(username):
@@ -36,6 +40,7 @@ def register(username: str, password: str) -> tuple[str]:
 
 
 def login(username: str, password: str, chat_name: str = None) -> tuple[str]:
+    """Opens an user session"""
 
     # Check if user exists
     if not database.exists_user(username):
@@ -56,6 +61,8 @@ def login(username: str, password: str, chat_name: str = None) -> tuple[str]:
 def create_chat(
     username: str, password: str, chat_name: str, users: list[str]
 ) -> tuple[str]:
+    """Creates a chat"""
+
     token, message = login(username, password)
 
     # Error in login
@@ -83,6 +90,7 @@ def create_chat(
 
 
 def send_msg(user_token: str, chat_name: str, msg: str) -> tuple[str]:
+    """Sends a message to a chat"""
 
     # Check if user has done login
     if not database.is_user_logged_in(user_token):
@@ -102,6 +110,7 @@ def send_msg(user_token: str, chat_name: str, msg: str) -> tuple[str]:
 
 
 def recv_msg(user_token: str, chat_name: str) -> list[dict[str:str]] | tuple[str]:
+    """Returns unseen messages"""
 
     # Check if user has done login
     if not database.is_user_logged_in(user_token):
@@ -119,6 +128,8 @@ def recv_msg(user_token: str, chat_name: str) -> list[dict[str:str]] | tuple[str
 
 
 def leave_chat(username: str, password: str, chat_name: str) -> tuple[str]:
+    """Leaves a chat"""
+
     token, message = login(username, password)
 
     # Error in login
@@ -141,94 +152,110 @@ def leave_chat(username: str, password: str, chat_name: str) -> tuple[str]:
 
 
 def list_users() -> tuple[list[str], str]:
-    return database.list_users(), "List of users sent"
+    """List the current users"""
+
+    return database.get_list_users(), "List of users sent"
 
 
 def list_chats() -> tuple[list[str], str]:
-    return database.list_chats(), "List of chats sent"
+    """List the current chats"""
+
+    return database.get_list_chats(), "List of chats sent"
 
 
 def stats() -> tuple[dict[str : int | float], str]:
+    """List some stats about Talk2Me"""
+
     return database.get_stats(), "Stats sent"
 
 
-def receive_request(conn: socket.socket) -> str | bool:
-    # Receive message
-    data = ""
+############################## Client interaction ##############################
+
+
+def send_answer(conn: socket.socket, answer: object) -> None:
+    """Sends an answer to the client"""
+
+    answer = json.dumps(answer)
+
+    log(answer, sent=True)
+
+    conn.sendall(bytes(answer + "\r\n", "utf-8"))
+
+
+def receive_request(conn: socket.socket) -> object | bool:
+    """Receives a request from the client"""
+
+    request = ""
     while True:
-        data += conn.recv(4096).decode("utf-8")
+        request += conn.recv(4096).decode("utf-8")
 
         # Connection was closed
-        if not data:
+        if not request:
             return False
 
-        # Message is complete
-        if "}\r\n" in data:
-            data = data.strip()
+        # Check if message is complete
+        if "\r\n" in request:
+            request = request.strip()
 
-            if LOGGING:
-                now = datetime.now()
-                now = now.strftime("%Y-%m-%d %H:%M:%S")
-                print(f"[{now}]: {data}")
+            log(request, sent=False)
 
-            return data
+            return json.loads(request)
 
 
-def send_answer(conn: socket.socket, message: str) -> None:
-    if LOGGING:
-        now = datetime.now()
-        now = now.strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{now}]: {message}")
-    conn.sendall(bytes(message + "\r\n", "utf-8"))
+############################## Thread methods ##############################
 
 
 def handle_request(conn: socket.socket) -> None:
+
+    token = None
+
     with conn:
 
         while True:
 
-            data = receive_request(conn)
+            request = receive_request(conn)
 
             # Connection closed
-            if not data:
+            if not request:
                 break
 
-            data = json.loads(data)
-
-            match data["operation"]:
+            match request["operation"]:
                 case "register":
-                    rpl, info = register(data["username"], data["password"])
+                    rpl, info = register(request["username"], request["password"])
 
                     answer = {"rpl": rpl, "info": info}
 
                 case "createchat":
                     rpl, info = create_chat(
-                        data["username"],
-                        data["password"],
-                        data["chatname"],
-                        data["users"],
+                        request["username"],
+                        request["password"],
+                        request["chatname"],
+                        request["users"],
                     )
 
                     answer = {"rpl": rpl, "info": info}
 
                 case "login":
                     token, info = login(
-                        data["username"], data["password"], data.get("chatname")
+                        request["username"],
+                        request["password"],
+                        request.get("chatname"),
                     )
 
                     if token != FAILURE:
                         answer = {"rpl": SUCCESS, "info": info, "token": token}
-                        enter_chat_mode = True
                     else:
                         answer = {"rpl": FAILURE, "info": info}
 
                 case "sendmsg":
-                    rpl, info = send_msg(data["token"], data["chatname"], data["msg"])
+                    rpl, info = send_msg(
+                        request["token"], request["chatname"], request["msg"]
+                    )
 
                     answer = {"rpl": rpl, "info": info}
 
                 case "recvmsg":
-                    messages, info = recv_msg(data["token"], data["chatname"])
+                    messages, info = recv_msg(request["token"], request["chatname"])
 
                     if messages != FAILURE:
                         answer = {
@@ -241,7 +268,7 @@ def handle_request(conn: socket.socket) -> None:
 
                 case "leavechat":
                     rpl, info = leave_chat(
-                        data["username"], data["password"], data["chatname"]
+                        request["username"], request["password"], request["chatname"]
                     )
                     answer = {"rpl": rpl, "info": info}
 
@@ -272,16 +299,42 @@ def handle_request(conn: socket.socket) -> None:
                 case _:
                     answer = {"rpl": FAILURE, "info": "Invalid request"}
 
-            answer = json.dumps(answer)
-
             send_answer(conn, answer)
+
+    # Close user session
+    if token is not None:
+        database.close_user_session(token)
+
+
+############################## Utilities ##############################
+
+
+def log(string: str, sent: bool) -> None:
+    """Logs the request receibev or the answer sent"""
+
+    CYAN = "\033[96m"
+    BLUE = "\033[94m"
+    RESET = "\033[0m"
+
+    if LOGGING:
+        now = datetime.now()
+        now = now.strftime("%Y-%m-%d %H:%M:%S")
+
+        format = CYAN if sent else BLUE
+
+        print(format + f"[{now}]: {string}" + RESET)
 
 
 def clean_up_threads():
+    """Checks for finished threads and cleans them"""
+
     for t in active_threads.copy():
         if not t.is_alive():
             t.join()
             active_threads.remove(t)
+
+
+############################## Main ##############################
 
 
 def main() -> None:
@@ -295,7 +348,6 @@ def main() -> None:
             try:
                 conn, _ = s.accept()
             except TimeoutError:
-
                 clean_up_threads()
                 continue
 

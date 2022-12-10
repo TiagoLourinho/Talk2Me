@@ -20,7 +20,7 @@ SUCCESS = "Success"
 FAILURE = "Failure"
 
 
-#################### Available functionalities ####################
+############################## Available functionalities ##############################
 
 
 def register(conn: socket.socket, username: str, password: str) -> None:
@@ -168,7 +168,7 @@ def stats(conn: socket.socket) -> None:
         print_with_format(answer["info"], formats=["red"])
 
 
-#################### Server interaction ####################
+############################## Server interaction ##############################
 
 
 def send_request(conn: socket.socket, request: object) -> object:
@@ -180,30 +180,26 @@ def send_request(conn: socket.socket, request: object) -> object:
 
     conn.sendall(bytes(request + "\r\n", "utf-8"))
 
-    answer = wait_for_server_answer(conn)
-
-    answer = json.loads(answer)
-
-    return answer
+    return wait_for_server_answer(conn)
 
 
-def wait_for_server_answer(conn: socket.socket) -> str:
+def wait_for_server_answer(conn: socket.socket) -> object:
     """Waits for an answer from the server and returns it"""
 
-    data = ""
+    answer = ""
     while True:
-        data += conn.recv(4096).decode("utf-8")
+        answer += conn.recv(4096).decode("utf-8")
 
         # Check if message is complete
-        if "\r\n" in data:
-            data = data.strip()
+        if "\r\n" in answer:
+            answer = answer.strip()
 
-            log(data, sent=False)
+            log(answer, sent=False)
 
-            return data
+            return json.loads(answer)
 
 
-#################### Thread methods ####################
+############################## Thread methods ##############################
 
 
 def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
@@ -216,7 +212,7 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
     while not shutdown:
         message = input("")
 
-        print(MOVE_UP + DELETE_LINE)
+        print(MOVE_UP + MOVE_UP + DELETE_LINE)
 
         # Leave chat mode
         if message.strip() == "exit":
@@ -277,7 +273,7 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
             return
 
 
-#################### Utilities ####################
+############################## Utilities ##############################
 
 
 def log(string: str, sent: bool) -> None:
@@ -289,8 +285,8 @@ def log(string: str, sent: bool) -> None:
         print_with_format(f"[{now}]: {string}", formats=["cyan"] if sent else ["blue"])
 
 
-def print_with_format(string: str, formats: str = [], end="\n"):
-    """Normal print statement but with colors"""
+def print_with_format(string: str, formats: str = [], end="\n") -> None:
+    """Normal print statement but with colors and others formats"""
 
     CYAN = "\033[96m"
     BLUE = "\033[94m"
@@ -401,7 +397,7 @@ def print_client_usage() -> None:
     print("- python t2mc.py <server address> stats")
 
 
-#################### Main ####################
+############################## Main ##############################
 
 
 def main() -> None:

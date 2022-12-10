@@ -350,7 +350,7 @@ def check_invocation() -> bool:
                 print_with_format("Invalid number of arguments", formats=["red"])
                 return False
         case "createchat":
-            if len(sys.argv) < 5:
+            if len(sys.argv) < 6:
                 print_with_format("Too few arguments", formats=["red"])
                 return False
         case "chat":
@@ -386,7 +386,7 @@ def print_client_usage() -> None:
     print_with_format("\nTalk2Me client correct usage:", formats=["bold"])
     print("- python t2mc.py <server address> register <username> <password>")
     print(
-        "- python t2mc.py <server address> createchat <username> <password> <username1>, ..., <usernameN>"
+        "- python t2mc.py <server address> createchat <username> <password> <chatname> <username1>, ..., <usernameN>"
     )
     print("- python t2mc.py <server address> chat <username> <password> <chatname>")
     print(

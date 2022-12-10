@@ -71,11 +71,13 @@ def create_chat(
 
     # Chat already exists
     if database.exists_chat(chat_name):
+        database.close_user_session(token)
         return FAILURE, "A chat with the same name already exist"
 
     # Check if all the users are registered
     for user in users:
         if not database.exists_user(user):
+            database.close_user_session(token)
             return FAILURE, "{user} is not registered"
 
     database.create_chat(chat_name)
@@ -138,10 +140,12 @@ def leave_chat(username: str, password: str, chat_name: str) -> tuple[str]:
 
     # Check if chat exist
     if not database.exists_chat(chat_name):
+        database.close_user_session(token)
         return FAILURE, "Chat doesn't exist"
 
     # Check if user in in the chat
     if not database.is_user_in_chat(username, chat_name):
+        database.close_user_session(token)
         return FAILURE, "User is not in the chat"
 
     database.remove_user_from_chat(username, chat_name)

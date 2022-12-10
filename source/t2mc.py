@@ -58,7 +58,12 @@ def create_chat(
 def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> None:
     """Sends a `login` request and then enters chat mode"""
 
-    request = {"operation": "login", "username": username, "password": password}
+    request = {
+        "operation": "login",
+        "username": username,
+        "password": password,
+        "chatname": chat_name,
+    }
 
     answer = send_request(conn, request)
 
@@ -211,11 +216,7 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
     while not shutdown:
         message = input("")
 
-        if shutdown:
-            print(MOVE_UP + DELETE_LINE + MOVE_UP)
-            break
-
-        print(MOVE_UP + MOVE_UP + DELETE_LINE)
+        print(MOVE_UP + DELETE_LINE)
 
         # Leave chat mode
         if message.strip() == "exit":
@@ -240,6 +241,7 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
         if answer["rpl"] == FAILURE:
             print_with_format(answer["info"], formats=["red"])
             shutdown = True
+            return
 
 
 def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
@@ -256,6 +258,7 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
 
         if answer["rpl"] == SUCCESS:
 
+            # Print other users messages
             for message in answer["messages"]:
                 print_with_format(
                     f'{message["msg"]:>{TERMINAL_WIDTH}}', formats=["bold"]
@@ -269,9 +272,9 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
                 )
 
         else:
-            os.system("cls" if os.name == "nt" else "clear")
             print_with_format(answer["info"], formats=["red"])
             shutdown = True
+            return
 
 
 #################### Utilities ####################

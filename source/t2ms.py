@@ -35,7 +35,7 @@ def register(username: str, password: str) -> tuple[str]:
     return SUCCESS, "User registered successfully"
 
 
-def login(username: str, password: str) -> tuple[str]:
+def login(username: str, password: str, chat_name: str = None) -> tuple[str]:
 
     # Check if user exists
     if not database.exists_user(username):
@@ -44,6 +44,11 @@ def login(username: str, password: str) -> tuple[str]:
     # Check if password is correct
     if not database.is_password_correct(username, password):
         return FAILURE, "Password is incorrect"
+
+    # In the case where the login was made to enter chat mode
+    if chat_name is not None:
+        if not database.is_user_in_chat(username, chat_name):
+            return FAILURE, "User is not in this chat"
 
     return database.open_user_session(username), "Login was successfully"
 
@@ -207,7 +212,9 @@ def handle_request(conn: socket.socket) -> None:
                     answer = {"rpl": rpl, "info": info}
 
                 case "login":
-                    token, info = login(data["username"], data["password"])
+                    token, info = login(
+                        data["username"], data["password"], data.get("chatname")
+                    )
 
                     if token != FAILURE:
                         answer = {"rpl": SUCCESS, "info": info, "token": token}

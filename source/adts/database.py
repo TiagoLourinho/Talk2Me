@@ -79,6 +79,7 @@ class Database:
                 {
                     "sender": msg.get_sender().get_username(),
                     "msg": msg.get_message(),
+                    "time": msg.get_time().strftime("%Y-%m-%d %H:%M:%S"),
                 }
                 for msg in self.__chats[chat_name].get_unseen_messages(
                     self.__tokens[user_token]

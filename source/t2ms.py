@@ -162,8 +162,8 @@ def receive_request(conn: socket.socket) -> str | bool:
             data = data.strip()
 
             if LOGGING:
-                now = str(datetime.now())
-                now = now[: now.index(".")]
+                now = datetime.now()
+                now = now.strftime("%Y-%m-%d %H:%M:%S")
                 print(f"[{now}]: {data}")
 
             return data
@@ -171,8 +171,8 @@ def receive_request(conn: socket.socket) -> str | bool:
 
 def send_answer(conn: socket.socket, message: str) -> None:
     if LOGGING:
-        now = str(datetime.now())
-        now = now[: now.index(".")]
+        now = datetime.now()
+        now = now.strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{now}]: {message}")
     conn.sendall(bytes(message + "\r\n", "utf-8"))
 

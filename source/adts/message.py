@@ -15,5 +15,8 @@ class Message:
     def get_message(self) -> str:
         return self.__message
 
+    def get_time(self) -> datetime:
+        return self.__time
+
     def __repr__(self) -> str:
         return f"{self.__sender} sent '{self.__message}' at {self.__time}"

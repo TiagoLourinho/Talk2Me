@@ -78,6 +78,12 @@ class Database:
         with self.__lock:
             return user_token in self.__tokens
 
+    def get_list_users(self) -> list[str]:
+        """Get the current users"""
+
+        with self.__lock:
+            return list(self.__users.keys())
+
     ############################## Chats management ##############################
 
     def exists_chat(self, chat_name: str) -> bool:
@@ -153,32 +159,11 @@ class Database:
         with self.__lock:
             self.__chats[chat_name].remove_user(self.__users[username])
 
-    ############################## Others ##############################
-
-    def get_list_users(self) -> list[str]:
-        """Get the current users"""
-
-        with self.__lock:
-            return list(self.__users.keys())
-
     def get_list_chats(self) -> list[str]:
         """Get the current chats"""
 
         with self.__lock:
             return list(self.__chats.keys())
-
-    def get_stats(self) -> dict[str : int | float]:
-        """Gets some stats from the database"""
-
-        with self.__lock:
-            return {
-                "number_of_users": len(self.__users),
-                "number_of_chats": len(self.__chats),
-                "number_of_sent_messages": sum(
-                    [len(chat) for chat in self.__chats.values()]
-                ),
-                "average_operation_latency": self.__average_latency,
-            }
 
     ############################## Utilities ##############################
 
@@ -209,3 +194,16 @@ class Database:
             self.__average_latency += (
                 latency - self.__average_latency
             ) / self.__n_requests
+
+    def get_stats(self) -> dict[str : int | float]:
+        """Gets some stats from the database"""
+
+        with self.__lock:
+            return {
+                "number_of_users": len(self.__users),
+                "number_of_chats": len(self.__chats),
+                "number_of_sent_messages": sum(
+                    [len(chat) for chat in self.__chats.values()]
+                ),
+                "average_operation_latency": self.__average_latency,
+            }

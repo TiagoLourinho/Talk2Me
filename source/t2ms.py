@@ -11,23 +11,15 @@ from adts import Database
 HOST = ""
 PORT = 9999
 LOGGING = True if os.getenv("TALK2ME_LOG") == "on" else False
-MAX_THREADS = 5  # Number of threads
-SOCKET_TIMEOUT = 0.5  # seconds
-
+MAX_THREADS = 10  # Number of threads
+SOCKET_TIMEOUT = 1  # seconds
 
 # Macros
 SUCCESS = "Success"
 FAILURE = "Failure"
 
-# Multithreading
-active_threads = set()
-
-# Database
-database = Database()
-
 # Security
 ENCRYPTION_KEY = "Ms_I0iVjanNosloNcbssrsCk-7MxGSQZNt5_C8UT66E="
-fernet = Fernet(ENCRYPTION_KEY)
 
 
 ############################## Requests ##############################
@@ -84,7 +76,7 @@ def create_chat(
     for user in users:
         if not database.exists_user(user):
             database.close_user_session(token)
-            return FAILURE, "{user} is not registered"
+            return FAILURE, f"{user} is not registered"
 
     database.create_chat(chat_name)
 
@@ -319,6 +311,8 @@ def handle_request(conn: socket.socket) -> None:
     if token is not None:
         database.close_user_session(token)
 
+    database.backup()
+
 
 ############################## Utilities ##############################
 
@@ -339,7 +333,7 @@ def log(string: str, sent: bool) -> None:
         print(format + f"[{now}]: {string}" + RESET)
 
 
-def clean_up_threads():
+def clean_up_threads(active_threads: set[Thread]) -> None:
     """Checks for finished threads and cleans them"""
 
     for t in active_threads.copy():
@@ -352,6 +346,15 @@ def clean_up_threads():
 
 
 def main() -> None:
+    print("Talk2Me server is now running")
+
+    global database
+    global fernet
+
+    database = Database()
+    fernet = Fernet(ENCRYPTION_KEY)
+
+    active_threads = set()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(SOCKET_TIMEOUT)
@@ -362,7 +365,7 @@ def main() -> None:
             try:
                 conn, _ = s.accept()
             except TimeoutError:
-                clean_up_threads()
+                clean_up_threads(active_threads)
                 continue
 
             # Handle client request
@@ -371,7 +374,7 @@ def main() -> None:
             t.start()
 
             if len(active_threads) > MAX_THREADS:
-                clean_up_threads()
+                clean_up_threads(active_threads)
 
 
 if __name__ == "__main__":

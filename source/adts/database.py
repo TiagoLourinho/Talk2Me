@@ -1,6 +1,8 @@
 import hashlib
 import secrets
 import threading
+import pickle
+import os
 
 from adts import User, Message, Chat
 
@@ -9,9 +11,25 @@ class Database:
     """Class representing a thread safe database of Talk2Me"""
 
     def __init__(self) -> None:
-        self.__users: dict[str, User] = dict()  # The registered users
+
+        # Check if there is a backup available to load from
+        if os.path.exists("backup.pickle"):
+
+            with open("backup.pickle", "rb") as f:
+                backup = pickle.load(f)
+
+            self.__users: dict[str, User] = backup["users"]
+            self.__chats: dict[str, User] = backup["chats"]
+
+            print("Loaded database from previous backup")
+
+        else:
+            self.__users: dict[str, User] = dict()  # The registered users
+            self.__chats: dict[str, Chat] = dict()  # The created chats
+
+            print("Couldn't load database from backup")
+
         self.__tokens: dict[str, User] = dict()  # The current open sessions
-        self.__chats: dict[str, Chat] = dict()  # The created chats
         self.__lock = threading.Lock()  # Thread lock
 
     ############################## Users management ##############################
@@ -156,3 +174,10 @@ class Database:
         """Generates a token for the user session"""
 
         return secrets.token_hex(32)
+
+    def backup(self) -> None:
+        with self.__lock:
+            backup = {"users": self.__users, "chats": self.__chats}
+
+            with open("backup.pickle", "wb") as f:
+                pickle.dump(backup, f, pickle.HIGHEST_PROTOCOL)

@@ -12,7 +12,6 @@ PORT = 9999
 LOGGING = True if os.getenv("TALK2ME_LOG") == "on" else False
 TERMINAL_WIDTH = os.get_terminal_size().columns
 
-
 # Multithreading
 shutdown = False
 lock = Lock()
@@ -23,7 +22,6 @@ FAILURE = "Failure"
 
 # Security
 ENCRYPTION_KEY = "Ms_I0iVjanNosloNcbssrsCk-7MxGSQZNt5_C8UT66E="
-fernet = Fernet(ENCRYPTION_KEY)
 
 
 ############################## Available functionalities ##############################
@@ -411,6 +409,9 @@ def print_client_usage() -> None:
 
 
 def main() -> None:
+    global fernet
+
+    fernet = Fernet(ENCRYPTION_KEY)
 
     if not check_invocation():
         print_client_usage()

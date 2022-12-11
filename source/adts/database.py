@@ -21,13 +21,15 @@ class Database:
             self.__users: dict[str, User] = backup["users"]
             self.__chats: dict[str, User] = backup["chats"]
 
-            print("Loaded database from previous backup")
+            print(
+                f"Loaded database from previous backup with {len(self.__users)} users and {len(self.__chats)} chats"
+            )
 
         else:
             self.__users: dict[str, User] = dict()  # The registered users
             self.__chats: dict[str, Chat] = dict()  # The created chats
 
-            print("Couldn't load database from backup")
+            print("Couldn't load database from backup, started a new one")
 
         self.__tokens: dict[str, User] = dict()  # The current open sessions
         self.__lock = threading.Lock()  # Thread lock

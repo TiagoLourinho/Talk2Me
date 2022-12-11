@@ -34,6 +34,11 @@ def register(conn: socket.socket, username: str, password: str) -> None:
 
     answer = send_request(conn, request)
 
+    # Lost connection to the server
+    if not answer:
+        print_with_format("Lost connection to the server", formats=["red"])
+        return
+
     print_with_format(
         answer["info"], formats=["green"] if answer["rpl"] == SUCCESS else ["red"]
     )
@@ -54,6 +59,11 @@ def create_chat(
 
     answer = send_request(conn, request)
 
+    # Lost connection to the server
+    if not answer:
+        print_with_format("Lost connection to the server", formats=["red"])
+        return
+
     print_with_format(
         answer["info"], formats=["green"] if answer["rpl"] == SUCCESS else ["red"]
     )
@@ -70,6 +80,11 @@ def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> N
     }
 
     answer = send_request(conn, request)
+
+    # Lost connection to the server
+    if not answer:
+        print_with_format("Lost connection to the server", formats=["red"])
+        return
 
     if answer["rpl"] == SUCCESS:
         token = answer["token"]
@@ -107,6 +122,11 @@ def leave_chat(
 
     answer = send_request(conn, request)
 
+    # Lost connection to the server
+    if not answer:
+        print_with_format("Lost connection to the server", formats=["red"])
+        return
+
     print_with_format(
         answer["info"], formats=["green"] if answer["rpl"] == SUCCESS else ["red"]
     )
@@ -118,6 +138,11 @@ def list_users(conn: socket.socket) -> None:
     request = {"operation": "listusers"}
 
     answer = send_request(conn, request)
+
+    # Lost connection to the server
+    if not answer:
+        print_with_format("Lost connection to the server", formats=["red"])
+        return
 
     if answer["rpl"] == SUCCESS:
         users = answer["users"]
@@ -139,6 +164,11 @@ def list_chats(conn: socket.socket) -> None:
 
     answer = send_request(conn, request)
 
+    # Lost connection to the server
+    if not answer:
+        print_with_format("Lost connection to the server", formats=["red"])
+        return
+
     if answer["rpl"] == SUCCESS:
         chats = answer["chats"]
 
@@ -159,6 +189,11 @@ def stats(conn: socket.socket) -> None:
 
     answer = send_request(conn, request)
 
+    # Lost connection to the server
+    if not answer:
+        print_with_format("Lost connection to the server", formats=["red"])
+        return
+
     if answer["rpl"] == SUCCESS:
         print(
             f"Talk2Me currently has "
@@ -175,7 +210,7 @@ def stats(conn: socket.socket) -> None:
 ############################## Server interaction ##############################
 
 
-def send_request(conn: socket.socket, request: object) -> object:
+def send_request(conn: socket.socket, request: object) -> object | bool:
     """Sends a request to the server and returns the answer"""
 
     request = json.dumps(request)
@@ -189,12 +224,16 @@ def send_request(conn: socket.socket, request: object) -> object:
     return wait_for_server_answer(conn)
 
 
-def wait_for_server_answer(conn: socket.socket) -> object:
+def wait_for_server_answer(conn: socket.socket) -> object | bool:
     """Waits for an answer from the server and returns it"""
 
     answer = ""
     while True:
         answer += conn.recv(4096).decode()
+
+        # Connection was closed
+        if not answer:
+            return False
 
         # Check if message is complete
         if "\r\n" in answer:
@@ -242,6 +281,12 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
         with lock:
             answer = send_request(conn, request)
 
+        # Lost connection to the server
+        if not answer:
+            print_with_format("Lost connection to the server", formats=["red"])
+            shutdown = True
+            return
+
         if answer["rpl"] == FAILURE:
             print_with_format(answer["info"], formats=["red"])
             shutdown = True
@@ -259,6 +304,12 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
 
         with lock:
             answer = send_request(conn, request)
+
+        # Lost connection to the server
+        if not answer:
+            print_with_format("Lost connection to the server", formats=["red"])
+            shutdown = True
+            return
 
         if answer["rpl"] == SUCCESS:
 

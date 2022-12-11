@@ -17,6 +17,11 @@ class Chat:
 
         return self.__name
 
+    def get_messages(self) -> list[Message]:
+        """Get all messages in the chat"""
+
+        return self.__messages
+
     def add_user(self, user: User) -> None:
         """Adds the user to the chat and initializes the unseen messages list"""
 

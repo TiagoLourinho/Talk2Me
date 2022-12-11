@@ -93,6 +93,20 @@ def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> N
         print_with_format(f"{chat_name:^{TERMINAL_WIDTH}}", formats=["bold"])
         print_with_format("=" * TERMINAL_WIDTH + "\n", formats=["blue"])
 
+        for msg in answer["messages"]:
+            if msg["sender"] != username:
+                print_with_format(f'{msg["msg"]:>{TERMINAL_WIDTH}}', formats=["bold"])
+                print_with_format(
+                    f'{msg["sender"]:>{TERMINAL_WIDTH}}', formats=["light grey"]
+                )
+                print_with_format(
+                    f'{msg["time"]:>{TERMINAL_WIDTH}}' + "\n",
+                    formats=["dark grey"],
+                )
+            else:
+                print_with_format(msg["msg"], formats=["bold"])
+                print_with_format(msg["time"] + "\n", formats=["dark grey"])
+
         send_thread = Thread(target=send_new_messages, args=(conn, chat_name, token))
         recv_thread = Thread(
             target=check_fow_new_messages, args=(conn, chat_name, token)
@@ -269,6 +283,7 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
             shutdown = True
             return
 
+        # Print sent message
         print_with_format(message, formats=["bold"])
         print_with_format(
             datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n", formats=["dark grey"]

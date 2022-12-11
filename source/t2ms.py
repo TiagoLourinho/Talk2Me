@@ -37,23 +37,42 @@ def register(username: str, password: str) -> tuple[str]:
     return SUCCESS, "User registered successfully"
 
 
-def login(username: str, password: str, chat_name: str = None) -> tuple[str]:
+def login(
+    username: str, password: str, chat_name: str = None
+) -> tuple[str | list[dict[str:str]]]:
     """Opens an user session"""
 
     # Check if user exists
     if not database.exists_user(username):
-        return FAILURE, "User isn't registered"
+        return FAILURE, "User isn't registered", None
 
     # Check if password is correct
     if not database.is_password_correct(username, password):
-        return FAILURE, "Password is incorrect"
+        return FAILURE, "Password is incorrect", None
 
     # In the case where the login was made to enter chat mode
     if chat_name is not None:
-        if not database.is_user_in_chat(username, chat_name):
-            return FAILURE, "User is not in this chat"
 
-    return database.open_user_session(username), "Login was successfully"
+        # Chat doesn't already exists
+        if not database.exists_chat(chat_name):
+            return FAILURE, "The chat doesn't exist", None
+
+        # Check if user in in the chat
+        if not database.is_user_in_chat(username, chat_name):
+            return FAILURE, "User is not in this chat", None
+
+        token = database.open_user_session(username)
+
+        # Clear unseen messages because all messages will be returned
+        database.get_unseen_messages(token, chat_name)
+
+        return (
+            token,
+            "Login was successfully",
+            database.get_chat_messages(chat_name),
+        )
+    else:
+        return database.open_user_session(username), "Login was successfully", None
 
 
 def create_chat(
@@ -61,7 +80,7 @@ def create_chat(
 ) -> tuple[str]:
     """Creates a chat"""
 
-    token, message = login(username, password)
+    token, message, _ = login(username, password)
 
     # Error in login
     if token == FAILURE:
@@ -130,7 +149,7 @@ def recv_msg(user_token: str, chat_name: str) -> list[dict[str:str]] | tuple[str
 def leave_chat(username: str, password: str, chat_name: str) -> tuple[str]:
     """Leaves a chat"""
 
-    token, message = login(username, password)
+    token, message, _ = login(username, password)
 
     # Error in login
     if token == FAILURE:
@@ -242,7 +261,7 @@ def handle_request(conn: socket.socket) -> None:
                     answer = {"rpl": rpl, "info": info}
 
                 case "login":
-                    token, info = login(
+                    token, info, messages = login(
                         request["username"],
                         request["password"],
                         request.get("chatname"),
@@ -252,6 +271,10 @@ def handle_request(conn: socket.socket) -> None:
                         answer = {"rpl": SUCCESS, "info": info, "token": token}
                     else:
                         answer = {"rpl": FAILURE, "info": info}
+
+                    # Support for chat mode and sends the messages right away
+                    if messages is not None:
+                        answer["messages"] = messages
 
                 case "sendmsg":
                     rpl, info = send_msg(

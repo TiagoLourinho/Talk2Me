@@ -132,6 +132,19 @@ class Database:
                 )
             ]
 
+    def get_chat_messages(self, chat_name: str) -> list[dict[str:str]]:
+        """Gets all the messages in a chat"""
+
+        with self.__lock:
+            return [
+                {
+                    "sender": msg.get_sender().get_username(),
+                    "msg": msg.get_message(),
+                    "time": msg.get_time().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+                for msg in self.__chats[chat_name].get_messages()
+            ]
+
     def remove_user_from_chat(self, username: str, chat_name: str) -> None:
         """Removes a user from a chat"""
 
@@ -178,6 +191,8 @@ class Database:
         return secrets.token_hex(32)
 
     def backup(self) -> None:
+        """Backups the database to a pickle file"""
+
         with self.__lock:
             backup = {"users": self.__users, "chats": self.__chats}
 

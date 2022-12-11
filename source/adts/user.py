@@ -1,3 +1,6 @@
+import hmac
+
+
 class User:
     """A class representing a user of Talk2Me"""
 
@@ -10,10 +13,10 @@ class User:
 
         return self.__username
 
-    def is_password_correct(self, password: str) -> bool:
+    def is_password_correct(self, password_digested: str) -> bool:
         """Check if the password is correct"""
 
-        return self.__password == password
+        return hmac.compare_digest(self.__password, password_digested)
 
     def __repr__(self) -> str:
         """String representation of the user"""

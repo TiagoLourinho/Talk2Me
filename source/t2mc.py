@@ -259,6 +259,9 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
     while not shutdown:
         message = input("")
 
+        if shutdown:
+            return
+
         print(MOVE_UP + MOVE_UP + DELETE_LINE)
 
         # Leave chat mode
@@ -299,6 +302,9 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
     global shutdown
     while not shutdown:
         time.sleep(0.1)
+
+        if shutdown:
+            return
 
         request = {"operation": "recvmsg", "token": token, "chatname": chat_name}
 

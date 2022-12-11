@@ -238,8 +238,9 @@ def handle_request(conn: socket.socket) -> None:
     with conn:
 
         while True:
-            start = time()
+
             request = receive_request(conn)
+            start = time()
 
             # Connection closed
             if not request:
@@ -333,12 +334,11 @@ def handle_request(conn: socket.socket) -> None:
             end = time()
 
             database.update_average_operation_latency(end - start)
+            database.backup()
 
     # Close user session
     if token is not None:
         database.close_user_session(token)
-
-    database.backup()
 
 
 ############################## Utilities ##############################
@@ -373,7 +373,10 @@ def clean_up_threads(active_threads: set[Thread]) -> None:
 
 
 def main() -> None:
-    print("Talk2Me server is now running")
+    print(
+        "Talk2Me server is now running "
+        + ("with logging" if LOGGING else "without logging")
+    )
 
     global database
     global fernet

@@ -13,7 +13,7 @@ LOGGING = True if os.getenv("TALK2ME_LOG") == "on" else False
 TERMINAL_WIDTH = os.get_terminal_size().columns
 
 # Multithreading
-shutdown = False
+thread_shutdown = False
 lock = Lock()
 
 # Macros
@@ -72,6 +72,8 @@ def create_chat(
 def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> None:
     """Sends a `login` request and then enters chat mode"""
 
+    global thread_shutdown
+
     request = {
         "operation": "login",
         "username": username,
@@ -89,10 +91,12 @@ def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> N
     if answer["rpl"] == SUCCESS:
         token = answer["token"]
 
+        # Chat header
         print_with_format("=" * TERMINAL_WIDTH, formats=["blue"])
         print_with_format(f"{chat_name:^{TERMINAL_WIDTH}}", formats=["bold"])
         print_with_format("=" * TERMINAL_WIDTH + "\n", formats=["blue"])
 
+        # Print old messages
         for msg in answer["messages"]:
             if msg["sender"] != username:
                 print_with_format(f'{msg["msg"]:>{TERMINAL_WIDTH}}', formats=["bold"])
@@ -107,6 +111,8 @@ def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> N
                 print_with_format(msg["msg"], formats=["bold"])
                 print_with_format(msg["time"] + "\n", formats=["dark grey"])
 
+        # Start threads to receive and send the messages
+
         send_thread = Thread(target=send_new_messages, args=(conn, chat_name, token))
         recv_thread = Thread(
             target=check_fow_new_messages, args=(conn, chat_name, token)
@@ -115,8 +121,15 @@ def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> N
         send_thread.start()
         recv_thread.start()
 
-        send_thread.join()
-        recv_thread.join()
+        try:
+            send_thread.join()
+            recv_thread.join()
+
+        except KeyboardInterrupt:
+            thread_shutdown = True
+            send_thread.join()
+            recv_thread.join()
+            return
 
     else:
         print_with_format(answer["info"], formats=["red"])
@@ -162,9 +175,9 @@ def list_users(conn: socket.socket) -> None:
         users = answer["users"]
 
         if len(users):
-            print("The registed users are:")
+            print("The registed users are:\n")
             for user in users:
-                print(user)
+                print("- " + user)
         else:
             print("There are no users registered yet")
     else:
@@ -187,9 +200,9 @@ def list_chats(conn: socket.socket) -> None:
         chats = answer["chats"]
 
         if len(chats):
-            print("The available chats are:")
+            print("The available chats are:\n")
             for chat in chats:
-                print(chat)
+                print("- " + chat)
         else:
             print("There are no chats created yet")
     else:
@@ -267,20 +280,19 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
     """While in chat mode, sends new messages written by the user to the chat"""
 
     MOVE_UP = "\033[1A"
-    DELETE_LINE = "\033[K"
 
-    global shutdown
-    while not shutdown:
+    global thread_shutdown
+    while not thread_shutdown:
         message = input("")
 
-        if shutdown:
+        if thread_shutdown:
             return
 
-        print(MOVE_UP + MOVE_UP + DELETE_LINE)
+        print(MOVE_UP, end="\r")
 
         # Leave chat mode
         if message.strip() == "exit":
-            shutdown = True
+            thread_shutdown = True
             return
 
         # Print sent message
@@ -302,23 +314,23 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
         # Lost connection to the server
         if not answer:
             print_with_format("Lost connection to the server", formats=["red"])
-            shutdown = True
+            thread_shutdown = True
             return
 
         if answer["rpl"] == FAILURE:
             print_with_format(answer["info"], formats=["red"])
-            shutdown = True
+            thread_shutdown = True
             return
 
 
 def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
     """While in chat mode, checks for new messages written by others users in the chat"""
 
-    global shutdown
-    while not shutdown:
+    global thread_shutdown
+    while not thread_shutdown:
         time.sleep(0.1)
 
-        if shutdown:
+        if thread_shutdown:
             return
 
         request = {"operation": "recvmsg", "token": token, "chatname": chat_name}
@@ -329,10 +341,14 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
         # Lost connection to the server
         if not answer:
             print_with_format("Lost connection to the server", formats=["red"])
-            shutdown = True
+            thread_shutdown = True
             return
 
         if answer["rpl"] == SUCCESS:
+
+            # To handle the case where the user receives a message while is writing
+            if answer["messages"]:
+                print(end="\r")
 
             # Print other users messages
             for message in answer["messages"]:
@@ -349,7 +365,7 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
 
         else:
             print_with_format(answer["info"], formats=["red"])
-            shutdown = True
+            thread_shutdown = True
             return
 
 

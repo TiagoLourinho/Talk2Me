@@ -33,6 +33,8 @@ class Database:
 
         self.__tokens: dict[str, User] = dict()  # The current open sessions
         self.__lock = threading.Lock()  # Thread lock
+        self.__n_requests: int = 0  # Number of request received (for stats)
+        self.__average_latency: int = 0  # Average operation latency (for stats)
 
     ############################## Users management ##############################
 
@@ -175,7 +177,7 @@ class Database:
                 "number_of_sent_messages": sum(
                     [len(chat) for chat in self.__chats.values()]
                 ),
-                "average_operation_latency": 0,
+                "average_operation_latency": self.__average_latency,
             }
 
     ############################## Utilities ##############################
@@ -198,3 +200,12 @@ class Database:
 
             with open("backup.pickle", "wb") as f:
                 pickle.dump(backup, f, pickle.HIGHEST_PROTOCOL)
+
+    def update_average_operation_latency(self, latency: float) -> None:
+        """Updates the current average operation latency"""
+
+        with self.__lock:
+            self.__n_requests += 1
+            self.__average_latency += (
+                latency - self.__average_latency
+            ) / self.__n_requests

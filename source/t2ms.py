@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime
 from cryptography.fernet import Fernet
+from time import time
 
 from adts import Database
 
@@ -237,7 +238,7 @@ def handle_request(conn: socket.socket) -> None:
     with conn:
 
         while True:
-
+            start = time()
             request = receive_request(conn)
 
             # Connection closed
@@ -329,6 +330,9 @@ def handle_request(conn: socket.socket) -> None:
                     answer = {"rpl": FAILURE, "info": "Invalid request"}
 
             send_answer(conn, answer)
+            end = time()
+
+            database.update_average_operation_latency(end - start)
 
     # Close user session
     if token is not None:

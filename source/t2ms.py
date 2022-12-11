@@ -373,10 +373,8 @@ def clean_up_threads(active_threads: set[Thread]) -> None:
 
 
 def main() -> None:
-    print(
-        "Talk2Me server is now running "
-        + ("with logging" if LOGGING else "without logging")
-    )
+    print("* Talk2Me server is now running ")
+    print(f'* Logging: {"on" if LOGGING else "off"}')
 
     global database
     global fernet

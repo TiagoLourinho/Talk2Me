@@ -3,6 +3,7 @@ from threading import Thread
 import json
 import os
 from datetime import datetime
+from cryptography.fernet import Fernet
 
 from adts import Database
 
@@ -13,6 +14,7 @@ LOGGING = True if os.getenv("TALK2ME_LOG") == "on" else False
 MAX_THREADS = 5  # Number of threads
 SOCKET_TIMEOUT = 0.5  # seconds
 
+
 # Macros
 SUCCESS = "Success"
 FAILURE = "Failure"
@@ -22,6 +24,10 @@ active_threads = set()
 
 # Database
 database = Database()
+
+# Security
+ENCRYPTION_KEY = "Ms_I0iVjanNosloNcbssrsCk-7MxGSQZNt5_C8UT66E="
+fernet = Fernet(ENCRYPTION_KEY)
 
 
 ############################## Requests ##############################
@@ -183,7 +189,9 @@ def send_answer(conn: socket.socket, answer: object) -> None:
 
     log(answer, sent=True)
 
-    conn.sendall(bytes(answer + "\r\n", "utf-8"))
+    answer = fernet.encrypt(answer.encode()).decode()
+
+    conn.sendall((answer + "\r\n").encode())
 
 
 def receive_request(conn: socket.socket) -> object | bool:
@@ -191,7 +199,7 @@ def receive_request(conn: socket.socket) -> object | bool:
 
     request = ""
     while True:
-        request += conn.recv(4096).decode("utf-8")
+        request += conn.recv(4096).decode()
 
         # Connection was closed
         if not request:
@@ -200,6 +208,8 @@ def receive_request(conn: socket.socket) -> object | bool:
         # Check if message is complete
         if "\r\n" in request:
             request = request.strip()
+
+            request = fernet.decrypt(request.encode()).decode()
 
             log(request, sent=False)
 

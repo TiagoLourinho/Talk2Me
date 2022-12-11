@@ -5,11 +5,13 @@ import os
 from datetime import datetime
 import time
 from threading import Thread, Lock
+from cryptography.fernet import Fernet
 
 # Hyperparameters
 PORT = 9999
 LOGGING = True if os.getenv("TALK2ME_LOG") == "on" else False
 TERMINAL_WIDTH = os.get_terminal_size().columns
+
 
 # Multithreading
 shutdown = False
@@ -18,6 +20,10 @@ lock = Lock()
 # Macros
 SUCCESS = "Success"
 FAILURE = "Failure"
+
+# Security
+ENCRYPTION_KEY = "Ms_I0iVjanNosloNcbssrsCk-7MxGSQZNt5_C8UT66E="
+fernet = Fernet(ENCRYPTION_KEY)
 
 
 ############################## Available functionalities ##############################
@@ -178,7 +184,9 @@ def send_request(conn: socket.socket, request: object) -> object:
 
     log(request, sent=True)
 
-    conn.sendall(bytes(request + "\r\n", "utf-8"))
+    request = fernet.encrypt(request.encode()).decode()
+
+    conn.sendall((request + "\r\n").encode())
 
     return wait_for_server_answer(conn)
 
@@ -188,11 +196,13 @@ def wait_for_server_answer(conn: socket.socket) -> object:
 
     answer = ""
     while True:
-        answer += conn.recv(4096).decode("utf-8")
+        answer += conn.recv(4096).decode()
 
         # Check if message is complete
         if "\r\n" in answer:
             answer = answer.strip()
+
+            answer = fernet.decrypt(answer.encode()).decode()
 
             log(answer, sent=False)
 

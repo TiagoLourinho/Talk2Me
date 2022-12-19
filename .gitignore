@@ -1,5 +1,5 @@
-backup.pickle
-Talk2MeServer.pem
+*.pickle
+*.pem
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

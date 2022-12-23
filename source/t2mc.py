@@ -1,27 +1,12 @@
 import sys
 import socket
 import json
-import os
 from datetime import datetime
 import time
 from threading import Thread, Lock
 from cryptography.fernet import Fernet
 
-# Hyperparameters
-PORT = 9999
-LOGGING = True if os.getenv("TALK2ME_LOG") == "on" else False
-TERMINAL_WIDTH = os.get_terminal_size().columns
-
-# Multithreading
-thread_shutdown = False
-lock = Lock()
-
-# Macros
-SUCCESS = "Success"
-FAILURE = "Failure"
-
-# Security
-ENCRYPTION_KEY = "Ms_I0iVjanNosloNcbssrsCk-7MxGSQZNt5_C8UT66E="
+from config import *
 
 
 ############################## Available functionalities ##############################
@@ -497,9 +482,6 @@ def print_client_usage() -> None:
 
 
 def main() -> None:
-    global fernet
-
-    fernet = Fernet(ENCRYPTION_KEY)
 
     if not check_invocation():
         print_client_usage()
@@ -539,4 +521,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+
+    fernet = Fernet(ENCRYPTION_KEY)
+
+    thread_shutdown = False
+    lock = Lock()
+
     main()

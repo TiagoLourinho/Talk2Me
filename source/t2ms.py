@@ -1,26 +1,12 @@
 import socket
 from threading import Thread
 import json
-import os
 from datetime import datetime
 from cryptography.fernet import Fernet
 from time import time
 
 from adts import Database
-
-# Hyperparameters
-HOST = ""
-PORT = 9999
-LOGGING = True if os.getenv("TALK2ME_LOG") == "on" else False
-MAX_THREADS = 10  # Number of threads
-SOCKET_TIMEOUT = 1  # seconds
-
-# Macros
-SUCCESS = "Success"
-FAILURE = "Failure"
-
-# Security
-ENCRYPTION_KEY = "Ms_I0iVjanNosloNcbssrsCk-7MxGSQZNt5_C8UT66E="
+from config import *
 
 
 ############################## Requests ##############################
@@ -376,17 +362,11 @@ def main() -> None:
     print("* Talk2Me server is now running ")
     print(f'* Logging: {"on" if LOGGING else "off"}')
 
-    global database
-    global fernet
-
-    database = Database()
-    fernet = Fernet(ENCRYPTION_KEY)
-
     active_threads = set()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(SOCKET_TIMEOUT)
-        s.bind((HOST, PORT))
+        s.bind(("", PORT))
         s.listen()
 
         while True:
@@ -406,4 +386,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+
+    database = Database()
+    fernet = Fernet(ENCRYPTION_KEY)
+
     main()

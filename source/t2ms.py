@@ -37,6 +37,15 @@ def handle_request(conn: socket.socket) -> None:
                         leave_chat_in_chat_server(
                             request["chatname"], request["username"]
                         )
+                    case "stats":
+                        rpl, feedback, s = get_stats_in_chat_server()
+
+                        if rpl == SUCCESS:
+                            answer = {"rpl": SUCCESS, "feedback": feedback, "stats": s}
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
+
+                        send_message(conn, answer)
             # Request comes from a client
             else:
                 match request["operation"]:
@@ -391,16 +400,23 @@ def stats() -> tuple[dict[str : int | float], str]:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as conn:
             try:
                 conn.connect((server, PORT))
-                request = {"operation": "stats"}
+                request = {"server_operation": "stats"}
 
                 send_message(conn, request)
 
                 chat_stats = receive_message(conn)
 
+                # Connection was closed
+                if not chat_stats:
+                    continue
+
+                # The only thing that the main server doesn't know is the number of messages
+                stats["number_of_sent_messages"] += chat_stats["stats"][
+                    "number_of_sent_messages"
+                ]
+
             except ConnectionRefusedError:
                 continue
-
-        stats["number_of_sent_messages"] += chat_stats["number_of_sent_messages"]
 
     return SUCCESS, "Stats sent", stats
 
@@ -421,13 +437,19 @@ def create_chat_in_chat_server(chat_name: str, users: list[dict[str:str]]) -> No
                 user["username"], user["password"], already_encrypted=True
             )
 
-        database.add_user_to_chat(user, chat_name)
+        database.add_user_to_chat(user["username"], chat_name)
 
 
 def leave_chat_in_chat_server(chat_name: str, username: str) -> None:
     """Removes a user from a chat in the chat server"""
 
     database.remove_user_from_chat(username, chat_name)
+
+
+def get_stats_in_chat_server() -> tuple[dict[str : int | float], str]:
+    """Returns the stats in the chat server"""
+
+    return SUCCESS, "Stats sent", database.get_stats()
 
 
 ############################## Client interaction ##############################
@@ -473,8 +495,8 @@ def receive_message(conn: socket.socket) -> object | bool:
 def log(string: str, sent: bool) -> None:
     """Logs the request receibev or the answer sent"""
 
-    CYAN = "\033[96m"
     BLUE = "\033[94m"
+    CYAN = "\033[96m"
     RESET = "\033[0m"
 
     if LOGGING:
@@ -483,7 +505,7 @@ def log(string: str, sent: bool) -> None:
 
         format = CYAN if sent else BLUE
 
-        print(format + f"[{now}]: {string}" + RESET)
+        print(format + f'[{now}][{"SENT" if sent else "RECEIVED"}]: {string}' + RESET)
 
 
 def clean_up_threads(active_threads: set[Thread]) -> None:

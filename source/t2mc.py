@@ -368,12 +368,19 @@ def wait_for_server_answer(conn: socket.socket) -> object | bool:
 
 
 def log(string: str, sent: bool) -> None:
-    """Logs the request sent or the answer received"""
+    """Logs the request receibev or the answer sent"""
+
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    RESET = "\033[0m"
 
     if LOGGING:
         now = datetime.now()
         now = now.strftime("%Y-%m-%d %H:%M:%S")
-        print_with_format(f"[{now}]: {string}", formats=["cyan"] if sent else ["blue"])
+
+        format = CYAN if sent else BLUE
+
+        print(format + f'[{now}][{"SENT" if sent else "RECEIVED"}]: {string}' + RESET)
 
 
 def print_with_format(string: str, formats: str = [], end="\n") -> None:

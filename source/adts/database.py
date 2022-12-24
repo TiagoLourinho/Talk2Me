@@ -62,10 +62,6 @@ class Database:
 
     ############################## Chats server management ##############################
 
-    def get_associated_server(self, chat_name: str) -> str | None:
-        with self.__lock:
-            return self.__redirect_chats.get(chat_name)
-
     def get_lowest_load_server(self) -> str | None:
         """Returns the server with the lowest load"""
         with self.__lock:
@@ -86,19 +82,23 @@ class Database:
             self.__redirect_chats[chat_name] = server
             self.__n_chats_per_server[server] += 1
 
-    ############################## Users management ##############################
-
-    def exists_user(self, username: str) -> bool:
-        """Checks if a user is registered"""
-
+    def get_associated_server(self, chat_name: str) -> str | None:
         with self.__lock:
-            return username in self.__users
+            return self.__redirect_chats.get(chat_name)
+
+    ############################## Users management ##############################
 
     def get_user_password(self, username: str) -> str:
         """Returns the encrypted user password"""
 
         with self.__lock:
             return self.__users[username].get_password()
+
+    def exists_user(self, username: str) -> bool:
+        """Checks if a user is registered"""
+
+        with self.__lock:
+            return username in self.__users
 
     def create_user(
         self, username: str, password: str, already_encrypted: bool = False
@@ -119,6 +119,12 @@ class Database:
                 self.encode_password(password)
             )
 
+    def is_user_logged_in(self, user_token: str) -> bool:
+        """Check if a session is opened for the user (if login was made)"""
+
+        with self.__lock:
+            return user_token in self.__tokens
+
     def open_user_session(self, username: str) -> str:
         """Opens a session for the user and returns the token"""
 
@@ -132,12 +138,6 @@ class Database:
 
         with self.__lock:
             self.__tokens.pop(user_token)
-
-    def is_user_logged_in(self, user_token: str) -> bool:
-        """Check if a session is opened for the user (if login was made)"""
-
-        with self.__lock:
-            return user_token in self.__tokens
 
     def get_list_users(self) -> list[str]:
         """Get the current users"""
@@ -164,6 +164,12 @@ class Database:
 
         with self.__lock:
             self.__chats[chat_name].add_user(self.__users[username])
+
+    def remove_user_from_chat(self, username: str, chat_name: str) -> None:
+        """Removes a user from a chat"""
+
+        with self.__lock:
+            self.__chats[chat_name].remove_user(self.__users[username])
 
     def is_user_in_chat(
         self, user: str, chat_name: str, use_token_instead: bool = False
@@ -213,12 +219,6 @@ class Database:
                 }
                 for msg in self.__chats[chat_name].get_messages()
             ]
-
-    def remove_user_from_chat(self, username: str, chat_name: str) -> None:
-        """Removes a user from a chat"""
-
-        with self.__lock:
-            self.__chats[chat_name].remove_user(self.__users[username])
 
     def get_list_chats(self) -> list[str]:
         """Get the current chats"""

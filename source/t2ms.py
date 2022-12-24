@@ -8,6 +8,157 @@ from time import time
 from adts import Database
 from config import *
 
+############################## Thread methods ##############################
+
+
+def handle_request(conn: socket.socket) -> None:
+
+    token = None
+
+    with conn:
+
+        while True:
+
+            request = receive_message(conn)
+            start = time()
+
+            # Connection closed
+            if not request:
+                break
+
+            # Request comes from main server
+            if request.get("server_operation") is not None:
+                match request["server_operation"]:
+                    case "createchat":
+                        create_chat_in_chat_server(
+                            request["chatname"], request["users"]
+                        )
+                    case "leavechat":
+                        leave_chat_in_chat_server(
+                            request["chatname"], request["username"]
+                        )
+
+                break
+            # Request comes from a clinet
+            else:
+                match request["operation"]:
+                    case "register":
+                        rpl, feedback = register(
+                            request["username"], request["password"]
+                        )
+
+                        answer = {"rpl": rpl, "feedback": feedback}
+
+                    case "createchat":
+                        rpl, feedback = create_chat(
+                            request["username"],
+                            request["password"],
+                            request["chatname"],
+                            request["users"],
+                        )
+
+                        answer = {"rpl": rpl, "feedback": feedback}
+
+                    case "login":
+                        rpl, feedback, token, extra_info = login(
+                            request["username"],
+                            request["password"],
+                            request.get("chatname"),
+                        )
+
+                        if rpl == SUCCESS:
+                            answer = {
+                                "rpl": SUCCESS,
+                                "feedback": feedback,
+                                "token": token,
+                            }
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
+
+                        if extra_info is not None:
+                            # Support for chat mode and sends the messages right away
+                            if type(extra_info) is list:
+                                answer["messages"] = extra_info
+                            # Redirect client to other server
+                            elif type(extra_info) is str:
+                                answer["redirect"] = extra_info
+
+                    case "sendmsg":
+                        rpl, feedback = send_msg(
+                            request["token"], request["chatname"], request["msg"]
+                        )
+
+                        answer = {"rpl": rpl, "feedback": feedback}
+
+                    case "recvmsg":
+                        rpl, feedback, messages = recv_msg(
+                            request["token"], request["chatname"]
+                        )
+
+                        if rpl == SUCCESS:
+                            answer = {
+                                "rpl": SUCCESS,
+                                "feedback": feedback,
+                                "messages": messages,
+                            }
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
+
+                    case "leavechat":
+                        rpl, feedback = leave_chat(
+                            request["username"],
+                            request["password"],
+                            request["chatname"],
+                        )
+                        answer = {"rpl": rpl, "feedback": feedback}
+
+                    case "listusers":
+                        rpl, feedback, users = list_users()
+
+                        if rpl == SUCCESS:
+                            answer = {
+                                "rpl": SUCCESS,
+                                "feedback": feedback,
+                                "users": users,
+                            }
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
+
+                    case "listchats":
+                        rpl, feedback, chats = list_chats()
+
+                        if rpl == SUCCESS:
+                            answer = {
+                                "rpl": SUCCESS,
+                                "feedback": feedback,
+                                "chats": chats,
+                            }
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
+
+                    case "stats":
+                        rpl, feedback, s = stats()
+
+                        if rpl == SUCCESS:
+                            answer = {"rpl": SUCCESS, "feedback": feedback, "stats": s}
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
+
+                    case _:
+                        answer = {"rpl": FAILURE, "feedback": "Invalid request"}
+
+                send_message(conn, answer)
+                end = time()
+
+                database.update_average_operation_latency(end - start)
+
+            database.backup()
+
+    # Close user session
+    if token is not None:
+        database.close_user_session(token)
+        database.backup()
+
 
 ############################## Requests ##############################
 
@@ -257,6 +408,31 @@ def stats() -> tuple[dict[str : int | float], str]:
     return SUCCESS, "Stats sent", stats
 
 
+############################## Chat server ##############################
+
+
+def create_chat_in_chat_server(chat_name: str, users: list[dict[str:str]]) -> None:
+    """Creates the chat and users in the chat server"""
+
+    database.create_chat(chat_name)
+
+    for user in users:
+
+        # User might be already in another chat of this chat server
+        if not database.exists_user(user["username"]):
+            database.create_user(
+                user["username"], user["password"], already_encrypted=True
+            )
+
+        database.add_user_to_chat(user, chat_name)
+
+
+def leave_chat_in_chat_server(chat_name: str, username: str) -> None:
+    """Removes a user from a chat in the chat server"""
+
+    database.remove_user_from_chat(username, chat_name)
+
+
 ############################## Client interaction ##############################
 
 
@@ -292,183 +468,6 @@ def receive_message(conn: socket.socket) -> object | bool:
             log(message, sent=False)
 
             return json.loads(message)
-
-
-############################## Chat server ##############################
-
-
-def create_chat_in_chat_server(chat_name: str, users: list[dict[str:str]]) -> None:
-    """Creates the chat and users in the chat server"""
-
-    database.create_chat(chat_name)
-
-    for user in users:
-
-        # User might be already in another chat of this chat server
-        if not database.exists_user(user["username"]):
-            database.create_user(
-                user["username"], user["password"], already_encrypted=True
-            )
-
-        database.add_user_to_chat(user, chat_name)
-
-
-def leave_chat_in_chat_server(chat_name: str, username: str) -> None:
-    """Removes a user from a chat in the chat server"""
-
-    database.remove_user_from_chat(username, chat_name)
-
-
-############################## Thread methods ##############################
-
-
-def handle_request(conn: socket.socket) -> None:
-
-    token = None
-
-    with conn:
-
-        while True:
-
-            request = receive_message(conn)
-            start = time()
-
-            # Connection closed
-            if not request:
-                break
-
-            # Request comes from main server
-            if request.get("server_operation") is not None:
-                match request["server_operation"]:
-                    case "createchat":
-                        create_chat_in_chat_server(
-                            request["chatname"], request["users"]
-                        )
-                    case "leavechat":
-                        leave_chat_in_chat_server(
-                            request["chatname"], request["username"]
-                        )
-
-                break
-            # Request comes from a clinet
-            else:
-                match request["operation"]:
-                    case "register":
-                        rpl, feedback = register(
-                            request["username"], request["password"]
-                        )
-
-                        answer = {"rpl": rpl, "feedback": feedback}
-
-                    case "createchat":
-                        rpl, feedback = create_chat(
-                            request["username"],
-                            request["password"],
-                            request["chatname"],
-                            request["users"],
-                        )
-
-                        answer = {"rpl": rpl, "feedback": feedback}
-
-                    case "login":
-                        rpl, feedback, token, extra_info = login(
-                            request["username"],
-                            request["password"],
-                            request.get("chatname"),
-                        )
-
-                        if rpl == SUCCESS:
-                            answer = {
-                                "rpl": SUCCESS,
-                                "feedback": feedback,
-                                "token": token,
-                            }
-                        else:
-                            answer = {"rpl": FAILURE, "feedback": feedback}
-
-                        if extra_info is not None:
-                            # Support for chat mode and sends the messages right away
-                            if type(extra_info) is list:
-                                answer["messages"] = extra_info
-                            # Redirect client to other server
-                            elif type(extra_info) is str:
-                                answer["redirect"] = extra_info
-
-                    case "sendmsg":
-                        rpl, feedback = send_msg(
-                            request["token"], request["chatname"], request["msg"]
-                        )
-
-                        answer = {"rpl": rpl, "feedback": feedback}
-
-                    case "recvmsg":
-                        rpl, feedback, messages = recv_msg(
-                            request["token"], request["chatname"]
-                        )
-
-                        if rpl == SUCCESS:
-                            answer = {
-                                "rpl": SUCCESS,
-                                "feedback": feedback,
-                                "messages": messages,
-                            }
-                        else:
-                            answer = {"rpl": FAILURE, "feedback": feedback}
-
-                    case "leavechat":
-                        rpl, feedback = leave_chat(
-                            request["username"],
-                            request["password"],
-                            request["chatname"],
-                        )
-                        answer = {"rpl": rpl, "feedback": feedback}
-
-                    case "listusers":
-                        rpl, feedback, users = list_users()
-
-                        if rpl == SUCCESS:
-                            answer = {
-                                "rpl": SUCCESS,
-                                "feedback": feedback,
-                                "users": users,
-                            }
-                        else:
-                            answer = {"rpl": FAILURE, "feedback": feedback}
-
-                    case "listchats":
-                        rpl, feedback, chats = list_chats()
-
-                        if rpl == SUCCESS:
-                            answer = {
-                                "rpl": SUCCESS,
-                                "feedback": feedback,
-                                "chats": chats,
-                            }
-                        else:
-                            answer = {"rpl": FAILURE, "feedback": feedback}
-
-                    case "stats":
-                        rpl, feedback, s = stats()
-
-                        if rpl == SUCCESS:
-                            answer = {"rpl": SUCCESS, "feedback": feedback, "stats": s}
-                        else:
-                            answer = {"rpl": FAILURE, "feedback": feedback}
-
-                    case _:
-                        answer = {"rpl": FAILURE, "feedback": "Invalid request"}
-
-                send_message(conn, answer)
-                end = time()
-
-                database.update_average_operation_latency(end - start)
-
-            database.backup()
-
-    # Close user session
-    if token is not None:
-        database.close_user_session(token)
-        database.backup()
 
 
 ############################## Utilities ##############################

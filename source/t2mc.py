@@ -229,45 +229,6 @@ def stats(conn: socket.socket) -> None:
         print_with_format(answer["feedback"], formats=["red"])
 
 
-############################## Server interaction ##############################
-
-
-def send_request(conn: socket.socket, request: object) -> object | bool:
-    """Sends a request to the server and returns the answer"""
-
-    request = json.dumps(request)
-
-    log(request, sent=True)
-
-    request = fernet.encrypt(request.encode()).decode()
-
-    conn.sendall((request + "\r\n").encode())
-
-    return wait_for_server_answer(conn)
-
-
-def wait_for_server_answer(conn: socket.socket) -> object | bool:
-    """Waits for an answer from the server and returns it"""
-
-    answer = ""
-    while True:
-        answer += conn.recv(4096).decode()
-
-        # Connection was closed
-        if not answer:
-            return False
-
-        # Check if message is complete
-        if "\r\n" in answer:
-            answer = answer.strip()
-
-            answer = fernet.decrypt(answer.encode()).decode()
-
-            log(answer, sent=False)
-
-            return json.loads(answer)
-
-
 ############################## Thread methods ##############################
 
 
@@ -362,6 +323,45 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
             print_with_format(answer["feedback"], formats=["red"])
             thread_shutdown = True
             return
+
+
+############################## Server interaction ##############################
+
+
+def send_request(conn: socket.socket, request: object) -> object | bool:
+    """Sends a request to the server and returns the answer"""
+
+    request = json.dumps(request)
+
+    log(request, sent=True)
+
+    request = fernet.encrypt(request.encode()).decode()
+
+    conn.sendall((request + "\r\n").encode())
+
+    return wait_for_server_answer(conn)
+
+
+def wait_for_server_answer(conn: socket.socket) -> object | bool:
+    """Waits for an answer from the server and returns it"""
+
+    answer = ""
+    while True:
+        answer += conn.recv(4096).decode()
+
+        # Connection was closed
+        if not answer:
+            return False
+
+        # Check if message is complete
+        if "\r\n" in answer:
+            answer = answer.strip()
+
+            answer = fernet.decrypt(answer.encode()).decode()
+
+            log(answer, sent=False)
+
+            return json.loads(answer)
 
 
 ############################## Utilities ##############################

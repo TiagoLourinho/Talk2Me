@@ -29,24 +29,30 @@ def login(
 ) -> tuple[str | list[dict[str:str]]]:
     """Opens an user session"""
 
+    # Redirect client
+    if chat_name is not None:
+        server = database.get_associated_server(chat_name)
+        if server is not None:
+            return FAILURE, "Redirect client", None, server
+
     # Check if user exists
     if not database.exists_user(username):
-        return FAILURE, "User isn't registered", None
+        return FAILURE, "User isn't registered", None, None
 
     # Check if password is correct
     if not database.is_password_correct(username, password):
-        return FAILURE, "Password is incorrect", None
+        return FAILURE, "Password is incorrect", None, None
 
     # In the case where the login was made to enter chat mode
     if chat_name is not None:
 
         # Chat doesn't already exists
         if not database.exists_chat(chat_name):
-            return FAILURE, "The chat doesn't exist", None
+            return FAILURE, "The chat doesn't exist", None, None
 
         # Check if user in in the chat
         if not database.is_user_in_chat(username, chat_name):
-            return FAILURE, "User is not in this chat", None
+            return FAILURE, "User is not in this chat", None, None
 
         token = database.open_user_session(username)
 
@@ -54,12 +60,18 @@ def login(
         database.get_unseen_messages(token, chat_name)
 
         return (
-            token,
+            SUCCESS,
             "Login was successfully",
+            token,
             database.get_chat_messages(chat_name),
         )
     else:
-        return database.open_user_session(username), "Login was successfully", None
+        return (
+            SUCCESS,
+            "Login was successfully",
+            database.open_user_session(username),
+            None,
+        )
 
 
 def create_chat(
@@ -67,11 +79,11 @@ def create_chat(
 ) -> tuple[str]:
     """Creates a chat"""
 
-    token, message, _ = login(username, password)
+    rpl, message, token, _ = login(username, password)
 
     # Error in login
-    if token == FAILURE:
-        return token, message
+    if rpl == FAILURE:
+        return FAILURE, message
 
     # Chat already exists
     if database.exists_chat(chat_name):
@@ -84,11 +96,36 @@ def create_chat(
             database.close_user_session(token)
             return FAILURE, f"{user} is not registered"
 
+    # Create the chat and add the users
     database.create_chat(chat_name)
 
     database.add_user_to_chat(username, chat_name)
     for user in users:
         database.add_user_to_chat(user, chat_name)
+
+    # Inform the chat server of the newly created chat
+    server = database.get_lowest_load_server()
+
+    if server is not None:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as conn:
+            try:
+                conn.connect((server, PORT))
+                info = {
+                    "server_operation": "createchat",
+                    "chatname": chat_name,
+                    "users": [
+                        {"username": user, "password": database.get_user_password(user)}
+                        for user in (users + [username])
+                    ],
+                }
+
+                send_message(conn, info)
+                receive_message(conn)
+
+                database.associate_chat_with_server(chat_name, server)
+
+            except ConnectionRefusedError:
+                pass
 
     database.close_user_session(token)
 
@@ -120,27 +157,31 @@ def recv_msg(user_token: str, chat_name: str) -> list[dict[str:str]] | tuple[str
 
     # Check if user has done login
     if not database.is_user_logged_in(user_token):
-        return FAILURE, "User was not logged in"
+        return FAILURE, "User was not logged in", None
 
     # Check if chat exist
     if not database.exists_chat(chat_name):
-        return FAILURE, "Chat doesn't exist"
+        return FAILURE, "Chat doesn't exist", None
 
     # Check if user in in the chat
     if not database.is_user_in_chat(user_token, chat_name, use_token_instead=True):
-        return FAILURE, "User is not in the chat"
+        return FAILURE, "User is not in the chat", None
 
-    return database.get_unseen_messages(user_token, chat_name), "Messages received"
+    return (
+        SUCCESS,
+        "Messages received",
+        database.get_unseen_messages(user_token, chat_name),
+    )
 
 
 def leave_chat(username: str, password: str, chat_name: str) -> tuple[str]:
     """Leaves a chat"""
 
-    token, message, _ = login(username, password)
+    rpl, message, token, _ = login(username, password)
 
     # Error in login
-    if token == FAILURE:
-        return token, message
+    if rpl == FAILURE:
+        return FAILURE, message
 
     # Check if chat exist
     if not database.exists_chat(chat_name):
@@ -152,7 +193,27 @@ def leave_chat(username: str, password: str, chat_name: str) -> tuple[str]:
         database.close_user_session(token)
         return FAILURE, "User is not in the chat"
 
+    # Remove user
     database.remove_user_from_chat(username, chat_name)
+
+    # Inform the chat server of the newly created chat
+    server = database.get_associated_server(chat_name)
+
+    if server is not None:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as conn:
+            try:
+                conn.connect((server, PORT))
+                info = {
+                    "server_operation": "leavechat",
+                    "chatname": chat_name,
+                    "username": username,
+                }
+
+                send_message(conn, info)
+                receive_message(conn)
+
+            except ConnectionRefusedError:
+                pass
 
     database.close_user_session(token)
 
@@ -162,56 +223,100 @@ def leave_chat(username: str, password: str, chat_name: str) -> tuple[str]:
 def list_users() -> tuple[list[str], str]:
     """List the current users"""
 
-    return database.get_list_users(), "List of users sent"
+    return SUCCESS, "List of users sent", database.get_list_users()
 
 
 def list_chats() -> tuple[list[str], str]:
     """List the current chats"""
 
-    return database.get_list_chats(), "List of chats sent"
+    return SUCCESS, "List of chats sent", database.get_list_chats()
 
 
 def stats() -> tuple[dict[str : int | float], str]:
     """List some stats about Talk2Me"""
 
-    return database.get_stats(), "Stats sent"
+    # Main stats
+    stats = database.get_stats()
+
+    # Get number of messages sent in the chat servers
+    for server in CHAT_SERVERS:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as conn:
+            try:
+                conn.connect((server, PORT))
+                request = {"operation": "stats"}
+
+                send_message(conn, request)
+
+                chat_stats = receive_message(conn)
+
+            except ConnectionRefusedError:
+                continue
+
+        stats["number_of_sent_messages"] += chat_stats["number_of_sent_messages"]
+
+    return SUCCESS, "Stats sent", stats
 
 
 ############################## Client interaction ##############################
 
 
-def send_answer(conn: socket.socket, answer: object) -> None:
-    """Sends an answer to the client"""
+def send_message(conn: socket.socket, message: object) -> None:
+    """Sends an answer to the client or a request to chat server"""
 
-    answer = json.dumps(answer)
+    message = json.dumps(message)
 
-    log(answer, sent=True)
+    log(message, sent=True)
 
-    answer = fernet.encrypt(answer.encode()).decode()
+    message = fernet.encrypt(message.encode()).decode()
 
-    conn.sendall((answer + "\r\n").encode())
+    conn.sendall((message + "\r\n").encode())
 
 
-def receive_request(conn: socket.socket) -> object | bool:
-    """Receives a request from the client"""
+def receive_message(conn: socket.socket) -> object | bool:
+    """Receives a request from the client or a message from chat server"""
 
-    request = ""
+    message = ""
     while True:
-        request += conn.recv(4096).decode()
+        message += conn.recv(4096).decode()
 
         # Connection was closed
-        if not request:
+        if not message:
             return False
 
         # Check if message is complete
-        if "\r\n" in request:
-            request = request.strip()
+        if "\r\n" in message:
+            message = message.strip()
 
-            request = fernet.decrypt(request.encode()).decode()
+            message = fernet.decrypt(message.encode()).decode()
 
-            log(request, sent=False)
+            log(message, sent=False)
 
-            return json.loads(request)
+            return json.loads(message)
+
+
+############################## Chat server ##############################
+
+
+def create_chat_in_chat_server(chat_name: str, users: list[dict[str:str]]) -> None:
+    """Creates the chat and users in the chat server"""
+
+    database.create_chat(chat_name)
+
+    for user in users:
+
+        # User might be already in another chat of this chat server
+        if not database.exists_user(user["username"]):
+            database.create_user(
+                user["username"], user["password"], already_encrypted=True
+            )
+
+        database.add_user_to_chat(user, chat_name)
+
+
+def leave_chat_in_chat_server(chat_name: str, username: str) -> None:
+    """Removes a user from a chat in the chat server"""
+
+    database.remove_user_from_chat(username, chat_name)
 
 
 ############################## Thread methods ##############################
@@ -225,106 +330,145 @@ def handle_request(conn: socket.socket) -> None:
 
         while True:
 
-            request = receive_request(conn)
+            request = receive_message(conn)
             start = time()
 
             # Connection closed
             if not request:
                 break
 
-            match request["operation"]:
-                case "register":
-                    rpl, info = register(request["username"], request["password"])
+            # Request comes from main server
+            if request.get("server_operation") is not None:
+                match request["server_operation"]:
+                    case "createchat":
+                        create_chat_in_chat_server(
+                            request["chatname"], request["users"]
+                        )
+                    case "leavechat":
+                        leave_chat_in_chat_server(
+                            request["chatname"], request["username"]
+                        )
 
-                    answer = {"rpl": rpl, "info": info}
+                break
+            # Request comes from a clinet
+            else:
+                match request["operation"]:
+                    case "register":
+                        rpl, feedback = register(
+                            request["username"], request["password"]
+                        )
 
-                case "createchat":
-                    rpl, info = create_chat(
-                        request["username"],
-                        request["password"],
-                        request["chatname"],
-                        request["users"],
-                    )
+                        answer = {"rpl": rpl, "feedback": feedback}
 
-                    answer = {"rpl": rpl, "info": info}
+                    case "createchat":
+                        rpl, feedback = create_chat(
+                            request["username"],
+                            request["password"],
+                            request["chatname"],
+                            request["users"],
+                        )
 
-                case "login":
-                    token, info, messages = login(
-                        request["username"],
-                        request["password"],
-                        request.get("chatname"),
-                    )
+                        answer = {"rpl": rpl, "feedback": feedback}
 
-                    if token != FAILURE:
-                        answer = {"rpl": SUCCESS, "info": info, "token": token}
-                    else:
-                        answer = {"rpl": FAILURE, "info": info}
+                    case "login":
+                        rpl, feedback, token, extra_info = login(
+                            request["username"],
+                            request["password"],
+                            request.get("chatname"),
+                        )
 
-                    # Support for chat mode and sends the messages right away
-                    if messages is not None:
-                        answer["messages"] = messages
+                        if rpl == SUCCESS:
+                            answer = {
+                                "rpl": SUCCESS,
+                                "feedback": feedback,
+                                "token": token,
+                            }
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
 
-                case "sendmsg":
-                    rpl, info = send_msg(
-                        request["token"], request["chatname"], request["msg"]
-                    )
+                        if extra_info is not None:
+                            # Support for chat mode and sends the messages right away
+                            if type(extra_info) is list:
+                                answer["messages"] = extra_info
+                            # Redirect client to other server
+                            elif type(extra_info) is str:
+                                answer["redirect"] = extra_info
 
-                    answer = {"rpl": rpl, "info": info}
+                    case "sendmsg":
+                        rpl, feedback = send_msg(
+                            request["token"], request["chatname"], request["msg"]
+                        )
 
-                case "recvmsg":
-                    messages, info = recv_msg(request["token"], request["chatname"])
+                        answer = {"rpl": rpl, "feedback": feedback}
 
-                    if messages != FAILURE:
-                        answer = {
-                            "rpl": SUCCESS,
-                            "info": info,
-                            "messages": messages,
-                        }
-                    else:
-                        answer = {"rpl": FAILURE, "info": info}
+                    case "recvmsg":
+                        rpl, feedback, messages = recv_msg(
+                            request["token"], request["chatname"]
+                        )
 
-                case "leavechat":
-                    rpl, info = leave_chat(
-                        request["username"], request["password"], request["chatname"]
-                    )
-                    answer = {"rpl": rpl, "info": info}
+                        if rpl == SUCCESS:
+                            answer = {
+                                "rpl": SUCCESS,
+                                "feedback": feedback,
+                                "messages": messages,
+                            }
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
 
-                case "listusers":
-                    users, info = list_users()
+                    case "leavechat":
+                        rpl, feedback = leave_chat(
+                            request["username"],
+                            request["password"],
+                            request["chatname"],
+                        )
+                        answer = {"rpl": rpl, "feedback": feedback}
 
-                    if users != FAILURE:
-                        answer = {"rpl": SUCCESS, "info": info, "users": users}
-                    else:
-                        answer = {"rpl": FAILURE, "info": info}
+                    case "listusers":
+                        rpl, feedback, users = list_users()
 
-                case "listchats":
-                    chats, info = list_chats()
+                        if rpl == SUCCESS:
+                            answer = {
+                                "rpl": SUCCESS,
+                                "feedback": feedback,
+                                "users": users,
+                            }
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
 
-                    if chats != FAILURE:
-                        answer = {"rpl": SUCCESS, "info": info, "chats": chats}
-                    else:
-                        answer = {"rpl": FAILURE, "info": info}
+                    case "listchats":
+                        rpl, feedback, chats = list_chats()
 
-                case "stats":
-                    s, info = stats()
+                        if rpl == SUCCESS:
+                            answer = {
+                                "rpl": SUCCESS,
+                                "feedback": feedback,
+                                "chats": chats,
+                            }
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
 
-                    if s != FAILURE:
-                        answer = {"rpl": SUCCESS, "info": info, "stats": s}
-                    else:
-                        answer = {"rpl": FAILURE, "info": info}
+                    case "stats":
+                        rpl, feedback, s = stats()
 
-                case _:
-                    answer = {"rpl": FAILURE, "info": "Invalid request"}
+                        if rpl == SUCCESS:
+                            answer = {"rpl": SUCCESS, "feedback": feedback, "stats": s}
+                        else:
+                            answer = {"rpl": FAILURE, "feedback": feedback}
 
-            send_answer(conn, answer)
-            end = time()
+                    case _:
+                        answer = {"rpl": FAILURE, "feedback": "Invalid request"}
 
-            database.update_average_operation_latency(end - start)
+                send_message(conn, answer)
+                end = time()
+
+                database.update_average_operation_latency(end - start)
+
             database.backup()
 
     # Close user session
     if token is not None:
         database.close_user_session(token)
+        database.backup()
 
 
 ############################## Utilities ##############################
@@ -387,7 +531,7 @@ def main() -> None:
 
 if __name__ == "__main__":
 
-    database = Database()
+    database = Database(CHAT_SERVERS)
     fernet = Fernet(ENCRYPTION_KEY)
 
     main()

@@ -13,6 +13,11 @@ class User:
 
         return self.__username
 
+    def get_password(self) -> str:
+        """Get the password"""
+
+        return self.__password
+
     def is_password_correct(self, password_digested: str) -> bool:
         """Check if the password is correct"""
 

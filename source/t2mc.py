@@ -25,7 +25,7 @@ def register(conn: socket.socket, username: str, password: str) -> None:
         return
 
     print_with_format(
-        answer["info"], formats=["green"] if answer["rpl"] == SUCCESS else ["red"]
+        answer["feedback"], formats=["green"] if answer["rpl"] == SUCCESS else ["red"]
     )
 
 
@@ -50,7 +50,7 @@ def create_chat(
         return
 
     print_with_format(
-        answer["info"], formats=["green"] if answer["rpl"] == SUCCESS else ["red"]
+        answer["feedback"], formats=["green"] if answer["rpl"] == SUCCESS else ["red"]
     )
 
 
@@ -116,8 +116,18 @@ def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> N
             recv_thread.join()
             return
 
+    # Redirect to other server
+    elif answer.get("redirect") is not None:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as new_conn:
+            try:
+                new_conn.connect((answer["redirect"], PORT))
+            except ConnectionRefusedError:
+                print_with_format("Couldn't connect to the server", formats=["red"])
+                return
+
+            chat(new_conn, username, password, chat_name)
     else:
-        print_with_format(answer["info"], formats=["red"])
+        print_with_format(answer["feedback"], formats=["red"])
 
 
 def leave_chat(
@@ -140,7 +150,7 @@ def leave_chat(
         return
 
     print_with_format(
-        answer["info"], formats=["green"] if answer["rpl"] == SUCCESS else ["red"]
+        answer["feedback"], formats=["green"] if answer["rpl"] == SUCCESS else ["red"]
     )
 
 
@@ -166,7 +176,7 @@ def list_users(conn: socket.socket) -> None:
         else:
             print("There are no users registered yet")
     else:
-        print_with_format(answer["info"], formats=["red"])
+        print_with_format(answer["feedback"], formats=["red"])
 
 
 def list_chats(conn: socket.socket) -> None:
@@ -191,7 +201,7 @@ def list_chats(conn: socket.socket) -> None:
         else:
             print("There are no chats created yet")
     else:
-        print_with_format(answer["info"], formats=["red"])
+        print_with_format(answer["feedback"], formats=["red"])
 
 
 def stats(conn: socket.socket) -> None:
@@ -216,7 +226,7 @@ def stats(conn: socket.socket) -> None:
         )
 
     else:
-        print_with_format(answer["info"], formats=["red"])
+        print_with_format(answer["feedback"], formats=["red"])
 
 
 ############################## Server interaction ##############################
@@ -303,7 +313,7 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
             return
 
         if answer["rpl"] == FAILURE:
-            print_with_format(answer["info"], formats=["red"])
+            print_with_format(answer["feedback"], formats=["red"])
             thread_shutdown = True
             return
 
@@ -349,7 +359,7 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
                 )
 
         else:
-            print_with_format(answer["info"], formats=["red"])
+            print_with_format(answer["feedback"], formats=["red"])
             thread_shutdown = True
             return
 

@@ -10,6 +10,7 @@ FAILURE = "Failure"
 # Server
 MAX_THREADS = 10  # Number of threads
 SOCKET_TIMEOUT = 1  # seconds
+CHAT_SERVERS = []
 
 # Client
 TERMINAL_WIDTH = os.get_terminal_size().columns

@@ -37,9 +37,7 @@ def handle_request(conn: socket.socket) -> None:
                         leave_chat_in_chat_server(
                             request["chatname"], request["username"]
                         )
-
-                break
-            # Request comes from a clinet
+            # Request comes from a client
             else:
                 match request["operation"]:
                     case "register":
@@ -157,7 +155,8 @@ def handle_request(conn: socket.socket) -> None:
     # Close user session
     if token is not None:
         database.close_user_session(token)
-        database.backup()
+
+    database.backup()
 
 
 ############################## Requests ##############################
@@ -271,7 +270,6 @@ def create_chat(
                 }
 
                 send_message(conn, info)
-                receive_message(conn)
 
                 database.associate_chat_with_server(chat_name, server)
 
@@ -361,7 +359,6 @@ def leave_chat(username: str, password: str, chat_name: str) -> tuple[str]:
                 }
 
                 send_message(conn, info)
-                receive_message(conn)
 
             except ConnectionRefusedError:
                 pass

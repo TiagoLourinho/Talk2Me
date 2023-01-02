@@ -521,7 +521,9 @@ def clean_up_threads(active_threads: set[Thread]) -> None:
 
 
 def main() -> None:
-    print("* Talk2Me server is now running ")
+    hostname = socket.gethostname()
+    IPAddr = socket.gethostbyname(hostname)
+    print(f"* Talk2Me server is now running at {IPAddr}")
     print(f'* Logging: {"on" if LOGGING else "off"}')
 
     active_threads = set()
@@ -550,6 +552,6 @@ def main() -> None:
 if __name__ == "__main__":
 
     database = Database(CHAT_SERVERS)
-    fernet = Fernet(ENCRYPTION_KEY)
+    fernet = Fernet(BASE_ENCRYPTION_KEY)
 
     main()

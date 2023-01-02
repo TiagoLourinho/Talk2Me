@@ -57,6 +57,8 @@ def create_chat(
 def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> None:
     """Sends a `login` request and then enters chat mode"""
 
+    TERMINAL_WIDTH = os.get_terminal_size().columns
+
     global thread_shutdown
 
     request = {
@@ -281,6 +283,8 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
 
 def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
     """While in chat mode, checks for new messages written by others users in the chat"""
+
+    TERMINAL_WIDTH = os.get_terminal_size().columns
 
     global thread_shutdown
     while not thread_shutdown:
@@ -539,7 +543,7 @@ def main() -> None:
 
 if __name__ == "__main__":
 
-    fernet = Fernet(ENCRYPTION_KEY)
+    fernet = Fernet(BASE_ENCRYPTION_KEY)
 
     thread_shutdown = False
     lock = Lock()

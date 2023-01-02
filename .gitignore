@@ -1,4 +1,4 @@
-config.sh
+aws_config.py
 *.pickle
 *.pem
 

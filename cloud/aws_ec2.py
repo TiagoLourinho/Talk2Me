@@ -3,12 +3,22 @@ import logging
 import boto3
 from botocore.exceptions import ClientError
 import subprocess
+import os
 
+from aws_config import *
+
+# Set enviroment variables defined in aws_config.py and used by boto3
+os.environ["AWS_ACCESS_KEY_ID"] = AWS_ACCESS_KEY_ID
+os.environ["AWS_SECRET_ACCESS_KEY"] = AWS_SECRET_ACCESS_KEY
+os.environ["AWS_DEFAULT_REGION"] = AWS_DEFAULT_REGION
+
+# Instance parameters
 IMAGE_AMI = "ami-07c2ae35d31367b3e"
 INSTANCE_TYPE = "t2.micro"
-KEY_PAIR = "T2M_key_portatil"
-SECURITY_GROUP = ["sg-01bec21cb33b3f507"]
+KEY_PAIR = "Talk2Me_key"
+SECURITY_GROUPS = ["sg-0bb356c8607f06a99"]
 
+# Global variables
 logger = logging.getLogger(__name__)
 ec2 = boto3.resource("ec2")
 
@@ -82,25 +92,45 @@ def display(instance):
         raise
 
 
+def print_usage():
+    print("Usage:")
+    print("- aws_ec2.py start")
+    print("- aws_ec2.py stop <instance id>")
+
+
+def execute_command(command):
+    subprocess.run(command.split())
+
+
 if __name__ == "__main__":
-    if sys.argv[1] == "start":
-        print("Lauching instance...")
-        instance = create(
-            IMAGE_AMI,
-            INSTANCE_TYPE,
-            KEY_PAIR,
-            SECURITY_GROUP,
-        )
-        display(instance)
+    try:
+        if sys.argv[1] == "start":
+            print("Lauching instance...")
+            instance = create(
+                IMAGE_AMI,
+                INSTANCE_TYPE,
+                KEY_PAIR,
+                SECURITY_GROUPS,
+            )
+            display(instance)
 
-        print("Copying server code to virtual machine...")
-        command = f"scp -i {KEY_PAIR} source/ ubuntu@{instance.public_ip_address}:"
-        subprocess.run(command.split())
+            print("Copying server code to virtual machine...")
+            execute_command(
+                f'scp -i {os.path.join(os.getcwd(), KEY_PAIR + ".pem")} -r source/ ubuntu@{instance.public_ip_address}:'
+            )
 
-    elif sys.argv[1] == "stop":
-        print("Terminating instance...")
-        ec2.Instance(sys.argv[2]).terminate()
-    else:
-        print("Syntax (two modes):")
-        print("\tinstance.py start")
-        print("\tinstance.py stop <instance id>")
+            print(f"Starting the server at {instance.public_ip_address}...")
+
+            boto3.client("ssm").send_command(
+                DocumentName="AWS-RunShellScript",
+                Parameters={"commands": ["python3 source/t2ms.py"]},
+                InstanceIds=[instance.id],
+            )
+
+        elif sys.argv[1] == "stop":
+            print("Terminating instance...")
+            ec2.Instance(sys.argv[2]).terminate()
+        else:
+            print_usage()
+    except IndexError:
+        print_usage()

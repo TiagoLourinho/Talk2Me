@@ -14,12 +14,14 @@ from config import *
 def handle_request(conn: socket.socket) -> None:
 
     token = None
+    session_encryption_key = BASE_ENCRYPTION_KEY
+    temp_key = None
 
     with conn:
 
         while True:
 
-            request = receive_message(conn)
+            request = receive_message(conn, session_encryption_key)
             start = time()
 
             # Connection closed
@@ -67,7 +69,7 @@ def handle_request(conn: socket.socket) -> None:
                         answer = {"rpl": rpl, "feedback": feedback}
 
                     case "login":
-                        rpl, feedback, token, extra_info = login(
+                        rpl, feedback, token, temp_key, extra_info = login(
                             request["username"],
                             request["password"],
                             request.get("chatname"),
@@ -89,6 +91,9 @@ def handle_request(conn: socket.socket) -> None:
                             # Redirect client to other server
                             elif type(extra_info) is str:
                                 answer["redirect"] = extra_info
+
+                        if temp_key is not None:
+                            answer["encryption_key"] = temp_key
 
                     case "sendmsg":
                         rpl, feedback = send_msg(
@@ -154,7 +159,12 @@ def handle_request(conn: socket.socket) -> None:
                     case _:
                         answer = {"rpl": FAILURE, "feedback": "Invalid request"}
 
-                send_message(conn, answer)
+                send_message(conn, answer, session_encryption_key)
+
+                # Update the key used in this session
+                if temp_key is not None:
+                    session_encryption_key = temp_key
+
                 end = time()
 
                 database.update_average_operation_latency(end - start)
@@ -192,26 +202,26 @@ def login(
     if chat_name is not None:
         server = database.get_associated_server(chat_name)
         if server is not None:
-            return FAILURE, "Redirect client", None, server
+            return FAILURE, "Redirect client", None, None, server
 
     # Check if user exists
     if not database.exists_user(username):
-        return FAILURE, "User isn't registered", None, None
+        return FAILURE, "User isn't registered", None, None, None
 
     # Check if password is correct
     if not database.is_password_correct(username, password):
-        return FAILURE, "Password is incorrect", None, None
+        return FAILURE, "Password is incorrect", None, None, None
 
     # In the case where the login was made to enter chat mode
     if chat_name is not None:
 
         # Chat doesn't already exists
         if not database.exists_chat(chat_name):
-            return FAILURE, "The chat doesn't exist", None, None
+            return FAILURE, "The chat doesn't exist", None, None, None
 
         # Check if user in in the chat
         if not database.is_user_in_chat(username, chat_name):
-            return FAILURE, "User is not in this chat", None, None
+            return FAILURE, "User is not in this chat", None, None, None
 
         token = database.open_user_session(username)
 
@@ -222,6 +232,7 @@ def login(
             SUCCESS,
             "Login was successfully",
             token,
+            Fernet.generate_key().decode(),
             database.get_chat_messages(chat_name),
         )
     else:
@@ -229,6 +240,7 @@ def login(
             SUCCESS,
             "Login was successfully",
             database.open_user_session(username),
+            None,
             None,
         )
 
@@ -238,7 +250,7 @@ def create_chat(
 ) -> tuple[str]:
     """Creates a chat"""
 
-    rpl, message, token, _ = login(username, password)
+    rpl, message, token, _, _ = login(username, password)
 
     # Error in login
     if rpl == FAILURE:
@@ -335,7 +347,7 @@ def recv_msg(user_token: str, chat_name: str) -> list[dict[str:str]] | tuple[str
 def leave_chat(username: str, password: str, chat_name: str) -> tuple[str]:
     """Leaves a chat"""
 
-    rpl, message, token, _ = login(username, password)
+    rpl, message, token, _, _ = login(username, password)
 
     # Error in login
     if rpl == FAILURE:
@@ -455,8 +467,12 @@ def get_stats_in_chat_server() -> tuple[dict[str : int | float], str]:
 ############################## Client interaction ##############################
 
 
-def send_message(conn: socket.socket, message: object) -> None:
+def send_message(
+    conn: socket.socket, message: object, key: str = BASE_ENCRYPTION_KEY
+) -> None:
     """Sends an answer to the client or a request to chat server"""
+
+    fernet = Fernet(key)
 
     message = json.dumps(message)
 
@@ -467,8 +483,12 @@ def send_message(conn: socket.socket, message: object) -> None:
     conn.sendall((message + "\r\n").encode())
 
 
-def receive_message(conn: socket.socket) -> object | bool:
+def receive_message(
+    conn: socket.socket, key: str = BASE_ENCRYPTION_KEY
+) -> object | bool:
     """Receives a request from the client or a message from chat server"""
+
+    fernet = Fernet(key)
 
     message = ""
     while True:
@@ -552,6 +572,5 @@ def main() -> None:
 if __name__ == "__main__":
 
     database = Database(CHAT_SERVERS)
-    fernet = Fernet(BASE_ENCRYPTION_KEY)
 
     main()

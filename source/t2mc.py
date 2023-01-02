@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet
 
 from config import *
 
-
+SESSION_ENCRYPTION_KEY = None
 ############################## Available functionalities ##############################
 
 
@@ -57,9 +57,7 @@ def create_chat(
 def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> None:
     """Sends a `login` request and then enters chat mode"""
 
-    TERMINAL_WIDTH = os.get_terminal_size().columns
-
-    global thread_shutdown
+    terminal_width = os.get_terminal_size().columns
 
     request = {
         "operation": "login",
@@ -78,20 +76,23 @@ def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> N
     if answer["rpl"] == SUCCESS:
         token = answer["token"]
 
+        global SESSION_ENCRYPTION_KEY
+        SESSION_ENCRYPTION_KEY = answer["encryption_key"]
+
         # Chat header
-        print_with_format("=" * TERMINAL_WIDTH, formats=["blue"])
-        print_with_format(f"{chat_name:^{TERMINAL_WIDTH}}", formats=["bold"])
-        print_with_format("=" * TERMINAL_WIDTH + "\n", formats=["blue"])
+        print_with_format("=" * terminal_width, formats=["blue"])
+        print_with_format(f"{chat_name:^{terminal_width}}", formats=["bold"])
+        print_with_format("=" * terminal_width + "\n", formats=["blue"])
 
         # Print old messages
         for msg in answer["messages"]:
             if msg["sender"] != username:
-                print_with_format(f'{msg["msg"]:>{TERMINAL_WIDTH}}', formats=["bold"])
+                print_with_format(f'{msg["msg"]:>{terminal_width}}', formats=["bold"])
                 print_with_format(
-                    f'{msg["sender"]:>{TERMINAL_WIDTH}}', formats=["light grey"]
+                    f'{msg["sender"]:>{terminal_width}}', formats=["light grey"]
                 )
                 print_with_format(
-                    f'{msg["time"]:>{TERMINAL_WIDTH}}' + "\n",
+                    f'{msg["time"]:>{terminal_width}}' + "\n",
                     formats=["dark grey"],
                 )
             else:
@@ -113,6 +114,7 @@ def chat(conn: socket.socket, username: str, password: str, chat_name: str) -> N
             recv_thread.join()
 
         except KeyboardInterrupt:
+            global thread_shutdown
             thread_shutdown = True
             send_thread.join()
             recv_thread.join()
@@ -284,7 +286,7 @@ def send_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
 def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> None:
     """While in chat mode, checks for new messages written by others users in the chat"""
 
-    TERMINAL_WIDTH = os.get_terminal_size().columns
+    terminal_width = os.get_terminal_size().columns
 
     global thread_shutdown
     while not thread_shutdown:
@@ -313,13 +315,13 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
             # Print other users messages
             for message in answer["messages"]:
                 print_with_format(
-                    f'{message["msg"]:>{TERMINAL_WIDTH}}', formats=["bold"]
+                    f'{message["msg"]:>{terminal_width}}', formats=["bold"]
                 )
                 print_with_format(
-                    f'{message["sender"]:>{TERMINAL_WIDTH}}', formats=["light grey"]
+                    f'{message["sender"]:>{terminal_width}}', formats=["light grey"]
                 )
                 print_with_format(
-                    f'{message["time"]:>{TERMINAL_WIDTH}}' + "\n",
+                    f'{message["time"]:>{terminal_width}}' + "\n",
                     formats=["dark grey"],
                 )
 
@@ -335,6 +337,11 @@ def check_fow_new_messages(conn: socket.socket, chat_name: str, token: str) -> N
 def send_request(conn: socket.socket, request: object) -> object | bool:
     """Sends a request to the server and returns the answer"""
 
+    fernet = Fernet(
+        SESSION_ENCRYPTION_KEY
+        if SESSION_ENCRYPTION_KEY is not None
+        else BASE_ENCRYPTION_KEY
+    )
     request = json.dumps(request)
 
     log(request, sent=True)
@@ -348,6 +355,12 @@ def send_request(conn: socket.socket, request: object) -> object | bool:
 
 def wait_for_server_answer(conn: socket.socket) -> object | bool:
     """Waits for an answer from the server and returns it"""
+
+    fernet = Fernet(
+        SESSION_ENCRYPTION_KEY
+        if SESSION_ENCRYPTION_KEY is not None
+        else BASE_ENCRYPTION_KEY
+    )
 
     answer = ""
     while True:
@@ -542,8 +555,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-
-    fernet = Fernet(BASE_ENCRYPTION_KEY)
 
     thread_shutdown = False
     lock = Lock()

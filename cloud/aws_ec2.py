@@ -4,26 +4,37 @@ import boto3
 from botocore.exceptions import ClientError
 import subprocess
 import os
+from time import sleep
+import socket
 
 from aws_config import *
-
-# Set enviroment variables defined in aws_config.py and used by boto3
-os.environ["AWS_ACCESS_KEY_ID"] = AWS_ACCESS_KEY_ID
-os.environ["AWS_SECRET_ACCESS_KEY"] = AWS_SECRET_ACCESS_KEY
-os.environ["AWS_DEFAULT_REGION"] = AWS_DEFAULT_REGION
 
 # Instance parameters
 IMAGE_AMI = "ami-07c2ae35d31367b3e"
 INSTANCE_TYPE = "t2.micro"
 KEY_PAIR = "Talk2Me_key"
 SECURITY_GROUPS = ["sg-0bb356c8607f06a99"]
+IAM_ROLE = {
+    "Name": "Talk2Me",
+}
 
 # Global variables
 logger = logging.getLogger(__name__)
-ec2 = boto3.resource("ec2")
+ec2 = boto3.resource(
+    "ec2",
+    region_name=AWS_DEFAULT_REGION,
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+)
+ssm_client = boto3.client(
+    "ssm",
+    region_name=AWS_DEFAULT_REGION,
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+)
 
 
-def create(image, instance_type, key_pair, security_groups=None):
+def create(image, instance_type, key_pair, iam_role, security_groups=None):
     """
     Creates a new EC2 instance. The instance starts immediately after
     it is created.
@@ -50,6 +61,7 @@ def create(image, instance_type, key_pair, security_groups=None):
             "ImageId": image,
             "InstanceType": instance_type,
             "KeyName": key_pair,
+            "IamInstanceProfile": iam_role,
         }
         if security_groups is not None:
             instance_params["SecurityGroupIds"] = [sg for sg in security_groups]
@@ -110,21 +122,38 @@ if __name__ == "__main__":
                 IMAGE_AMI,
                 INSTANCE_TYPE,
                 KEY_PAIR,
+                IAM_ROLE,
                 SECURITY_GROUPS,
             )
             display(instance)
 
+            # Wait until instance is ready
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as conn:
+                socket.setdefaulttimeout(1)
+                while True:
+                    try:
+                        conn.connect((instance.public_ip_address, 22))
+                        break
+                    except (ConnectionRefusedError, TimeoutError):
+                        sleep(1)
+                        continue
+
             print("Copying server code to virtual machine...")
+
             execute_command(
-                f'scp -i {os.path.join(os.getcwd(), KEY_PAIR + ".pem")} -r source/ ubuntu@{instance.public_ip_address}:'
+                f'scp -o StrictHostKeyChecking=no -i {os.path.join(os.getcwd(), KEY_PAIR + ".pem")} -r source/ ubuntu@{instance.public_ip_address}:'
             )
 
-            print(f"Starting the server at {instance.public_ip_address}...")
+            print(f"Starting the server...")
 
-            boto3.client("ssm").send_command(
+            ssm_client.send_command(
                 DocumentName="AWS-RunShellScript",
-                Parameters={"commands": ["python3 source/t2ms.py"]},
+                Parameters={"commands": ["python3 /home/ubuntu/source/t2ms.py"]},
                 InstanceIds=[instance.id],
+            )
+
+            print(
+                f"Server is now reachable at {instance.public_ip_address} and port 9999"
             )
 
         elif sys.argv[1] == "stop":

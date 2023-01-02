@@ -32,6 +32,12 @@ ssm_client = boto3.client(
     aws_access_key_id=AWS_ACCESS_KEY_ID,
     aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
 )
+ec2_client = boto3.client(
+    "ec2",
+    region_name=AWS_DEFAULT_REGION,
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+)
 
 
 def create(image, instance_type, key_pair, iam_role, security_groups=None):
@@ -137,6 +143,14 @@ if __name__ == "__main__":
                     except (ConnectionRefusedError, TimeoutError):
                         sleep(1)
                         continue
+
+            waiter = ec2_client.get_waiter("instance_status_ok")
+            waiter.wait(
+                InstanceIds=[instance.id],
+                Filters=[
+                    {"Name": "instance-status.reachability", "Values": ["passed"]}
+                ],
+            )
 
             print("Copying server code to virtual machine...")
 

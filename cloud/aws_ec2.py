@@ -2,6 +2,12 @@ import sys
 import logging
 import boto3
 from botocore.exceptions import ClientError
+import subprocess
+
+IMAGE_AMI = "ami-07c2ae35d31367b3e"
+INSTANCE_TYPE = "t2.micro"
+KEY_PAIR = "T2M_key_portatil"
+SECURITY_GROUP = ["sg-01bec21cb33b3f507"]
 
 logger = logging.getLogger(__name__)
 ec2 = boto3.resource("ec2")
@@ -77,18 +83,24 @@ def display(instance):
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "launch":
-        display(
-            create(
-                "ami-07c2ae35d31367b3e",
-                "t2.micro",
-                "T2M_key_portatil",
-                ["sg-01bec21cb33b3f507"],
-            )
+    if sys.argv[1] == "start":
+        print("Lauching instance...")
+        instance = create(
+            IMAGE_AMI,
+            INSTANCE_TYPE,
+            KEY_PAIR,
+            SECURITY_GROUP,
         )
-    elif sys.argv[1] == "terminate":
+        display(instance)
+
+        print("Copying server code to virtual machine...")
+        command = f"scp -i {KEY_PAIR} source/ ubuntu@{instance.public_ip_address}:"
+        subprocess.run(command.split())
+
+    elif sys.argv[1] == "stop":
+        print("Terminating instance...")
         ec2.Instance(sys.argv[2]).terminate()
     else:
         print("Syntax (two modes):")
-        print("\tinstance.py create")
-        print("\tinstance.py terminate <instance id>")
+        print("\tinstance.py start")
+        print("\tinstance.py stop <instance id>")

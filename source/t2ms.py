@@ -1,6 +1,7 @@
 import socket
 from threading import Thread
 import json
+from json.decoder import JSONDecodeError
 from datetime import datetime
 from cryptography.fernet import Fernet, InvalidToken
 from time import time
@@ -24,6 +25,9 @@ def handle_request(conn: socket.socket) -> None:
                 request = receive_message(conn, session_encryption_key)
             except InvalidToken:
                 log("Received invalid request (InvalidToken error), ignoring")
+                break
+            except JSONDecodeError:
+                log("Received invalid request (JSONDecodeError error), ignoring")
                 break
 
             start = time()
@@ -568,6 +572,8 @@ def main() -> None:
             except TimeoutError:
                 clean_up_threads(active_threads)
                 continue
+            except KeyboardInterrupt:
+                break
 
             # Handle client request
             t = Thread(target=handle_request, args=(conn,))

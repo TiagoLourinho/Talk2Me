@@ -2,7 +2,7 @@ import socket
 from threading import Thread
 import json
 from datetime import datetime
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from time import time
 
 from adts import Database
@@ -20,8 +20,12 @@ def handle_request(conn: socket.socket) -> None:
     with conn:
 
         while True:
+            try:
+                request = receive_message(conn, session_encryption_key)
+            except InvalidToken:
+                log("Received invalid request (InvalidToken error), ignoring")
+                break
 
-            request = receive_message(conn, session_encryption_key)
             start = time()
 
             # Connection closed
@@ -512,7 +516,7 @@ def receive_message(
 ############################## Utilities ##############################
 
 
-def log(string: str, sent: bool) -> None:
+def log(string: str, sent: bool = None) -> None:
     """Logs the request receibev or the answer sent"""
 
     BLUE = "\033[94m"
@@ -523,9 +527,14 @@ def log(string: str, sent: bool) -> None:
         now = datetime.now()
         now = now.strftime("%Y-%m-%d %H:%M:%S")
 
-        format = CYAN if sent else BLUE
+        if sent is not None:
+            format = CYAN if sent else BLUE
 
-        print(format + f'[{now}][{"SENT" if sent else "RECEIVED"}]: {string}' + RESET)
+            print(
+                format + f'[{now}][{"SENT" if sent else "RECEIVED"}]: {string}' + RESET
+            )
+        else:
+            print(f"[{now}]: {string}")
 
 
 def clean_up_threads(active_threads: set[Thread]) -> None:

@@ -24,7 +24,12 @@ AWS_SECRET_ACCESS_KEY = "EXAMPLE_SECRET_ACCESS_KEY"
 AWS_DEFAULT_REGION = "eu-west-2"
 ```
 
+The istance parameters should also be changed in the header of `aws_ec2.py`
+
 # Usage
+
 1 - Configure the system in `source/config.py`
+
 2 - Run the `source/t2ms.py` (either locally or in the cloud)
+
 3 - Connect to it using the `source/t2mc.py` 

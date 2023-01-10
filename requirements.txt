@@ -1,0 +1,5 @@
+boto3>=1.26.36
+botocore>=1.29.36
+cryptography>=38.0.4
+matplotlib>=3.6.0
+psutil>=5.9.0

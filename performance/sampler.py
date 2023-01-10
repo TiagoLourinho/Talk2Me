@@ -49,16 +49,16 @@ def main(sampling_time):
     server = psutil.Process(pid)
 
     time, cpu, mem = sample_data(server, sampling_time)
-    max_y = max(100, 1.2 * max(max(cpu), max(mem)))
+    max_y = max(100, 1.1 * max(max(cpu), max(mem)))
     plt.ylim(ymin=0, ymax=max_y)
     plt.xlim(xmin=0, xmax=sampling_time)
     plt.xlabel("Time [s]")
     plt.ylabel("Usage [%]")
     plt.grid()
 
-    plt.plot(time, cpu, "o--", lw=0.7, ms=5, label="CPU")
+    plt.plot(time, cpu, label="CPU")
     plt.legend()
-    plt.plot(time, mem, "o--", lw=0.7, ms=5, label="MEM")
+    plt.plot(time, mem, label="MEM")
     plt.legend()
 
     plt.savefig("performance.eps", format="eps")

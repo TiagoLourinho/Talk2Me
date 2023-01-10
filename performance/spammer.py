@@ -8,8 +8,6 @@ from threading import Thread
 import sys
 
 PORT = 9999
-N_USERS = 10
-MESSAGES_LENGTH = 1000000
 
 BASE_ENCRYPTION_KEY = "Ms_I0iVjanNosloNcbssrsCk-7MxGSQZNt5_C8UT66E="
 
@@ -63,7 +61,7 @@ def get_random_string(length):
     )
 
 
-def spam(host, user, chatname):
+def spam(host, user, chatname, message_lenght):
     """Function to run in a thread, sending messages to the server"""
 
     global thread_shutdown
@@ -81,7 +79,7 @@ def spam(host, user, chatname):
         answer = send_request(conn, request)
         user["token"] = answer["token"]
         user["key"] = answer["encryption_key"]
-        message = get_random_string(MESSAGES_LENGTH)
+        message = get_random_string(message_lenght)
         # Send messages
         while not thread_shutdown:
             try:
@@ -98,7 +96,7 @@ def spam(host, user, chatname):
                 thread_shutdown = True
 
 
-def main(host, spam_time):
+def main(host, spam_time, number_users, message_length):
 
     global thread_shutdown
 
@@ -106,17 +104,17 @@ def main(host, spam_time):
 
         conn.connect((host, PORT))
 
-        print(f"Press CTRL+C to stop spam or wait {spam_time}s")
         print(
-            f"{N_USERS} users sending messages ininterruptly with {MESSAGES_LENGTH} characters each"
+            f"{number_users} users sending messages ininterruptly with {message_length} characters each"
         )
+        print(f"Press CTRL+C to stop spam or wait {spam_time}s")
 
         chatname = get_random_string(20)
 
         users = []
 
         # Generate random users
-        for _ in range(N_USERS):
+        for _ in range(number_users):
             random_name = get_random_string(20)
             random_pass = get_random_string(10)
             users.append(
@@ -149,7 +147,10 @@ def main(host, spam_time):
 
         send_request(conn, request)
 
-        threads = [Thread(target=spam, args=(host, user, chatname)) for user in users]
+        threads = [
+            Thread(target=spam, args=(host, user, chatname, message_length))
+            for user in users
+        ]
 
         for t in threads:
             t.start()
@@ -171,7 +172,9 @@ def main(host, spam_time):
 
 if __name__ == "__main__":
     try:
-        main(sys.argv[1], int(sys.argv[2]))
+        main(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]))
     except IndexError:
         print("Usage:")
-        print(f"- python3 {sys.argv[0]} <server IP> <seconds to spam>")
+        print(
+            f"- python3 {sys.argv[0]} <server IP> <seconds to spam> <number of users> <message length>"
+        )

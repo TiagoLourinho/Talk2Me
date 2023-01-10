@@ -98,13 +98,13 @@ def spam(user, chatname):
                 thread_shutdown = True
 
 
-def main(spam_time):
+def main(host, spam_time):
 
     global thread_shutdown
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as conn:
 
-        conn.connect((HOST, PORT))
+        conn.connect((host, PORT))
 
         print(f"Press CTRL+C to stop spam or wait {spam_time}s")
 
@@ -168,7 +168,7 @@ def main(spam_time):
 
 if __name__ == "__main__":
     try:
-        main(int(sys.argv[1]))
+        main(sys.argv[1], int(sys.argv[2]))
     except IndexError:
         print("Usage:")
-        print(f"- python3 {sys.argv[0]} <seconds to spam>")
+        print(f"- python3 {sys.argv[0]} <server IP> <seconds to spam>")

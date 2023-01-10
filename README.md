@@ -26,6 +26,10 @@ AWS_DEFAULT_REGION = "eu-west-2"
 
 The istance parameters should also be changed in the header of `aws_ec2.py`
 
+# Performance
+
+To test performance robustness two files were given, `sampler.py` and `spammer.py` (in `performance\`). The first one sample the CPU and MEM usage of the server process during a certain amount of seconds and the second one spams the server with consecutive messages from multiple users.
+
 # Usage
 
 1 - Configure the system in `source/config.py`

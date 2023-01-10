@@ -25,7 +25,7 @@ class Database:
             backup["users"] if backup is not None else dict()
         )  # The registered users
 
-        self.__chats: dict[str, User] = (
+        self.__chats: dict[str, Chat] = (
             backup["chats"] if backup is not None else dict()
         )  # The created chats
 

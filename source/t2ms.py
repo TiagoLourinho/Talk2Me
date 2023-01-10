@@ -167,7 +167,11 @@ def handle_request(conn: socket.socket) -> None:
                     case _:
                         answer = {"rpl": FAILURE, "feedback": "Invalid request"}
 
-                send_message(conn, answer, session_encryption_key)
+                # Robustness when the client closes the socket
+                try:
+                    send_message(conn, answer, session_encryption_key)
+                except BrokenPipeError:
+                    break
 
                 # Update the key used in this session
                 if temp_key is not None:

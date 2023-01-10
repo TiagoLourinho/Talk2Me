@@ -1,58 +1,72 @@
-#!/usr/bin/python
-
 import matplotlib.pyplot as plt
-import subprocess
+import psutil
+import sys
 from time import sleep
 
-# Sampling rate (in ms)
-sampling_rate = 100
+
+def get_server_pid() -> int:
+    """Returns the server process PID"""
+
+    for proc in psutil.process_iter(["pid", "name", "username"]):
+        if "python" in proc.name():
+            for arg in proc.cmdline():
+                if "t2ms.py" in arg:
+                    return proc.pid
+
+    return None
 
 
-def extract_metric(metric):
-    command = "top -b -n 1"
-    top = subprocess.run(
-        command.split(), capture_output=True, text=True
-    ).stdout.splitlines()
+def sample_data(server_proc: psutil.Process, sampling_time):
+    """Samples CPU and MEM usage from server process"""
 
-    if metric == "idle_cpu":
-        return float(top[2].split()[7].replace(",", "."))
-    elif metric == "total_mem":
-        return float(top[3].split()[3].replace(",", "."))
-    elif metric == "free_mem":
-        return float(top[3].split()[5].replace(",", "."))
-
-
-def sample_data():
-
-    total_mem = extract_metric("total_mem")
-
-    mem_data = []
-    cpu_data = []
     time = []
+    cpu_data = []
+    mem_data = []
 
-    for i in range(100):
-        cpu_data.append(100 - extract_metric("idle_cpu"))
-        mem_data.append(100 * (total_mem - extract_metric("free_mem")) / total_mem)
-        time.append(len(cpu_data) * sampling_rate)
-        sleep(1 / sampling_rate)
+    interval = 1
+    N = round(sampling_time / interval)
+
+    print(f"Extracting {sampling_time}s of samples (total of {N})")
+
+    server_proc.cpu_percent(1)
+    for i in range(N + 1):
+        print(f"{i}/{N}")
+        time.append(i * interval)
+        mem_data.append(server_proc.memory_percent())
+        cpu_data.append(server_proc.cpu_percent(interval=interval))
 
     return time, cpu_data, mem_data
 
 
-time, cpu, mem = sample_data()
+def main(sampling_time):
 
-plt.plot(time, cpu, label="CPU")
-plt.ylim(ymin=0, ymax=100)
-plt.xlim(xmin=0)
-plt.xlabel("Time (ms)")
-plt.ylabel("CPU usage (%)")
-plt.legend()
+    pid = get_server_pid()
 
-plt.plot(time, mem, label="MEM")
-plt.ylim(ymin=0, ymax=100)
-plt.xlim(xmin=0)
-plt.xlabel("Time (ms)")
-plt.ylabel("MEM usage (%)")
-plt.legend()
+    if pid is None:
+        print("Talk2Me server is not running")
+        return
 
-plt.show()
+    server = psutil.Process(pid)
+
+    time, cpu, mem = sample_data(server, sampling_time)
+    max_y = max(100, 1.2 * max(max(cpu), max(mem)))
+    plt.ylim(ymin=0, ymax=max_y)
+    plt.xlim(xmin=0, xmax=sampling_time)
+    plt.xlabel("Time [s]")
+    plt.ylabel("Usage [%]")
+    plt.grid()
+
+    plt.plot(time, cpu, "o--", lw=0.7, ms=5, label="CPU")
+    plt.legend()
+    plt.plot(time, mem, "o--", lw=0.7, ms=5, label="MEM")
+    plt.legend()
+
+    plt.savefig("performance.eps", format="eps")
+
+
+if __name__ == "__main__":
+    try:
+        main(int(sys.argv[1]))
+    except IndexError:
+        print("Usage:")
+        print(f"- python3 {sys.argv[0]} <seconds to sample>")

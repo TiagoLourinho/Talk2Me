@@ -7,8 +7,8 @@ import time
 from threading import Thread
 import sys
 
-HOST = "127.0.0.1"
 PORT = 9999
+N_USERS = 10
 MESSAGES_LENGTH = 1000000
 
 BASE_ENCRYPTION_KEY = "Ms_I0iVjanNosloNcbssrsCk-7MxGSQZNt5_C8UT66E="
@@ -63,13 +63,13 @@ def get_random_string(length):
     )
 
 
-def spam(user, chatname):
+def spam(host, user, chatname):
     """Function to run in a thread, sending messages to the server"""
 
     global thread_shutdown
     global MESSAGES_LENGTH
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as conn:
-        conn.connect((HOST, PORT))
+        conn.connect((host, PORT))
 
         # Login
         request = {
@@ -107,13 +107,16 @@ def main(host, spam_time):
         conn.connect((host, PORT))
 
         print(f"Press CTRL+C to stop spam or wait {spam_time}s")
+        print(
+            f"{N_USERS} users sending messages ininterruptly with {MESSAGES_LENGTH} characters each"
+        )
 
         chatname = get_random_string(20)
 
         users = []
 
         # Generate random users
-        for _ in range(10):
+        for _ in range(N_USERS):
             random_name = get_random_string(20)
             random_pass = get_random_string(10)
             users.append(
@@ -146,7 +149,7 @@ def main(host, spam_time):
 
         send_request(conn, request)
 
-        threads = [Thread(target=spam, args=(user, chatname)) for user in users]
+        threads = [Thread(target=spam, args=(host, user, chatname)) for user in users]
 
         for t in threads:
             t.start()

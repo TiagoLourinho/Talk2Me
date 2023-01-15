@@ -5,9 +5,9 @@ A distributed system that sends and receives messages between users composed of 
 # Configuration
 
 Change the parameters in `source/config.py` accordingly.
-- `PORT`(int): The port in which to execute the communications
+- `PORT` (int): The port in which to execute the communications
 - `LOGGING` (bool): Whether to print the messages received/sent to the terminal (controlled by the environmental variable `TALK2ME_LOG`)
-- `BASE_ENCRYPTION_KEY` (string): The encryption key used in the encryption/decryption of the messages
+- `BASE_ENCRYPTION_KEY` (string): The encryption key used in the encryption/decryption of the messages when there isn't a session open
 - `SUCCESS` (string): Macro for "Success"
 - `FAILURE` (string): Macro for "Failure"
 - `MAX_THREADS` (int): Maximum number of threads in the server before checking and cleaning inactive threads
@@ -28,7 +28,7 @@ The istance parameters should also be changed in the header of `aws_ec2.py`
 
 # Performance
 
-To test performance robustness two files were given, `sampler.py` and `spammer.py` (in `performance\`). The first one sample the CPU and MEM usage of the server process during a certain amount of seconds and the second one spams the server with consecutive messages from multiple users.
+To test performance robustness two files were given, `sampler.py` and `spammer.py` (in `performance/`). The first one samples the CPU and MEM usage of the server process during a certain amount of seconds and the second one spams the server with consecutive messages from multiple users.
 
 # Usage
 
